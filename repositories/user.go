@@ -72,7 +72,7 @@ func (uc *userRepository) FindByEmail(ctx context.Context, email string) (*model
 
 func (uc *userRepository) FindByID(ctx context.Context, id bson.ObjectID) (*models.User, error) {
 	var user models.User
-	if err := uc.collection.FindOne(ctx, bson.M{"_id": id}).Decode(&user); err != nil {
+	if err := uc.collection.FindOne(ctx, bson.M{"_id": id}, options.FindOne().SetProjection(bson.M{"password": 0})).Decode(&user); err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, apperror.NewNotFoundError("User not found")
 		}

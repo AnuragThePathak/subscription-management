@@ -11,6 +11,7 @@ import (
 	"github.com/anuragthepathak/subscription-management/repositories"
 	"github.com/anuragthepathak/subscription-management/services"
 	"github.com/anuragthepathak/subscription-management/wrappers"
+	"github.com/anuragthepathak/subscription-management/middlewares"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -44,8 +45,18 @@ func main() {
 		}
 	}
 
+	// Load JWT configuration
+	jwtConfig := services.JWTConfig{
+		AccessSecret:       os.Getenv("JWT_ACCESS_SECRET"),
+		RefreshSecret:      os.Getenv("JWT_REFRESH_SECRET"),
+		AccessExpiryHours:  1,  // 1 hour
+		RefreshExpiryHours: 24 * 7, // 7 days
+		Issuer:             "Anurag Pathak",
+	}
+
 	userService := services.NewUserService(userRepository)
-	authService := services.NewAuthService(userRepository)
+	jwtService := services.NewJWTService(jwtConfig)
+	authService := services.NewAuthService(userRepository, jwtService)
 
 	var apiServer wrappers.Server
 	{
@@ -56,7 +67,15 @@ func main() {
 
 		// Setup routes
 		r.Mount("/api/v1/auth", controllers.NewAuthController(authService))
-		r.Mount("/api/v1/users", controllers.NewUserController(userService))
+
+		// Protected routes
+		r.Group(func(r chi.Router) {
+			// Apply authentication middleware
+			r.Use(middlewares.Authentication(jwtService))
+			
+			// User routes with authentication
+			r.Mount("/api/v1/users", controllers.NewUserController(userService))
+		})
 
 		// Create a new server configuration
 		apiserverConfig, err := serverConfig()

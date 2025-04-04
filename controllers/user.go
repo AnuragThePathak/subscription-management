@@ -33,14 +33,13 @@ func NewUserController(userService services.UserService) http.Handler {
 func (c *userController) createUser(w http.ResponseWriter, r *http.Request) {
 	user := models.UserRequest{}
 
-	endpoint.ServeRequest[*models.User](
+	endpoint.ServeRequest(
 		endpoint.InternalRequest{
 			W:          w,
 			R:          r,
 			ReqBodyObj: &user,
-			EndpointLogic: func() (any, error) { // 🔹 Change return type to `any`
-				user, err := c.userService.CreateUser(r.Context(), user.ToModel())
-				return user, err // 🔹 Explicitly cast *models.User to any
+			EndpointLogic: func() (any, error) {
+				return endpoint.ToResponse(c.userService.CreateUser(r.Context(), user.ToModel()))
 			},
 			SuccessCode: http.StatusCreated,
 		},
@@ -48,12 +47,12 @@ func (c *userController) createUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *userController) getAllUsers(w http.ResponseWriter, r *http.Request) {
-	endpoint.ServeRequest[*models.User](
+	endpoint.ServeRequest(
 		endpoint.InternalRequest{
 			W: w,
 			R: r,
-			EndpointLogic: func() (any, error) { // ✅ Supports both single & list responses
-				return c.userService.GetAllUsers(r.Context()) // Returns []*models.User
+			EndpointLogic: func() (any, error) {
+				return endpoint.ToResponseSlice(c.userService.GetAllUsers(r.Context()))
 			},
 			SuccessCode: http.StatusOK,
 		},
@@ -63,18 +62,18 @@ func (c *userController) getAllUsers(w http.ResponseWriter, r *http.Request) {
 func (c *userController) getUserByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	endpoint.ServeRequest[*models.User](
-		endpoint.InternalRequest{
-			W:          w,
-			R:          r,
-			ReqBodyObj: nil,
-			EndpointLogic: func() (any, error) { // 🔹 Change return type to `any`
-				user, err := c.userService.GetUserByID(r.Context(), id)
-				return user, err // 🔹 Explicitly cast *models.User to any
-			},
-			SuccessCode: http.StatusOK,
+	endpoint.ServeRequest(endpoint.InternalRequest{
+		W:          w,
+		R:          r,
+		ReqBodyObj: nil,
+		EndpointLogic: func() (any, error) {
+			// Convert the internal user model to a response model using the helper.
+			// If c.userService.GetUserByID returns (*models.User, error),
+			// then ToResponse converts it to (*models.UserResponse, error).
+			return endpoint.ToResponse(c.userService.GetUserByID(r.Context(), id))
 		},
-	)
+		SuccessCode: http.StatusOK,
+	})
 }
 
 func (c *userController) updateUser(w http.ResponseWriter, r *http.Request) {

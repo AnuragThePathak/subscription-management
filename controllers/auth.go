@@ -1,3 +1,4 @@
+// controllers/auth_controller.go
 package controllers
 
 import (
@@ -10,47 +11,54 @@ import (
 )
 
 type authController struct {
-	// Add any necessary dependencies here, such as a service or repository
 	authService services.AuthService
 }
 
+// NewAuthController creates a new auth controller
 func NewAuthController(authService services.AuthService) http.Handler {
-	// Initialize the authController with the provided authService
 	c := &authController{
-		authService: authService,
+		authService,
 	}
 
-	// Create a new router and define the routes
 	r := chi.NewRouter()
-	r.Post("/login", c.loginUser)
-	r.Get("/logout", c.logoutUser)
-	
+	r.Post("/login", c.login)
+	r.Post("/refresh", c.refreshToken)
+
 	return r
 }
 
-func (c *authController) loginUser(w http.ResponseWriter, r *http.Request) {
-	user := models.AuthRequest{}
-	endpoint.ServeRequest[*models.User](
+func (c *authController) login(w http.ResponseWriter, r *http.Request) {
+	loginReq := models.LoginRequest{}
+
+	endpoint.ServeRequest(
 		endpoint.InternalRequest{
 			W:          w,
 			R:          r,
-			ReqBodyObj: &user,
+			ReqBodyObj: &loginReq,
 			EndpointLogic: func() (any, error) {
-				return c.authService.AuthenticateUser(r.Context(), user.ToModel())
+				return c.authService.Login(r.Context(), loginReq)
 			},
 			SuccessCode: http.StatusOK,
 		},
 	)
 }
 
-func (c *authController) logoutUser(w http.ResponseWriter, r *http.Request) {
-	// Implement the logic to log out a user
-	// You can use c.authService to call the appropriate service method
-	// For example:
-	// err := c.authService.LogoutUser(req)
-	// if err != nil {
-	// 	http.Error(res, err.Error(), http.StatusInternalServerError)
-	// 	return
-	// }
-	// res.WriteHeader(http.StatusOK)
+func (c *authController) refreshToken(w http.ResponseWriter, r *http.Request) {
+	type refreshRequest struct {
+		RefreshToken string `json:"refreshToken" validate:"required"`
+	}
+
+	req := refreshRequest{}
+
+	endpoint.ServeRequest(
+		endpoint.InternalRequest{
+			W:          w,
+			R:          r,
+			ReqBodyObj: &req,
+			EndpointLogic: func() (any, error) {
+				return c.authService.RefreshToken(r.Context(), req.RefreshToken)
+			},
+			SuccessCode: http.StatusOK,
+		},
+	)
 }

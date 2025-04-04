@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/anuragthepathak/subscription-management/endpoint"
-	"github.com/anuragthepathak/subscription-management/models"
 	"github.com/anuragthepathak/subscription-management/services"
 	"github.com/go-chi/chi/v5"
 )
@@ -24,26 +23,9 @@ func NewUserController(userService services.UserService) http.Handler {
 	r := chi.NewRouter()
 	r.Get("/", c.getAllUsers)
 	r.Get("/{id}", c.getUserByID)
-	r.Post("/", c.createUser)
 	r.Put("/{id}", c.updateUser)
 	r.Delete("/{id}", c.deleteUser)
 	return r
-}
-
-func (c *userController) createUser(w http.ResponseWriter, r *http.Request) {
-	user := models.UserRequest{}
-
-	endpoint.ServeRequest(
-		endpoint.InternalRequest{
-			W:          w,
-			R:          r,
-			ReqBodyObj: &user,
-			EndpointLogic: func() (any, error) {
-				return endpoint.ToResponse(c.userService.CreateUser(r.Context(), user.ToModel()))
-			},
-			SuccessCode: http.StatusCreated,
-		},
-	)
 }
 
 func (c *userController) getAllUsers(w http.ResponseWriter, r *http.Request) {

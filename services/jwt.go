@@ -5,18 +5,10 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/anuragthepathak/subscription-management/config"
 	"github.com/anuragthepathak/subscription-management/models"
 	"github.com/golang-jwt/jwt/v5"
 )
-
-// JWTConfig holds configuration for JWT
-type JWTConfig struct {
-	AccessSecret       string
-	RefreshSecret      string
-	AccessExpiryHours  int
-	RefreshExpiryHours int
-	Issuer             string
-}
 
 // JWTService handles JWT token operations
 type JWTService interface {
@@ -26,11 +18,11 @@ type JWTService interface {
 }
 
 type jwtService struct {
-	config JWTConfig
+	config config.JWTConfig
 }
 
 // NewJWTService creates a new JWT service instance
-func NewJWTService(config JWTConfig) JWTService {
+func NewJWTService(config config.JWTConfig) JWTService {
 	return &jwtService{
 		config: config,
 	}

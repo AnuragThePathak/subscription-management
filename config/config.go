@@ -27,7 +27,17 @@ type JWTConfig struct {
 
 // Rate limiter configuration
 type RateLimiterConfig struct {
-	RequestsPerMinute int `mapstructure:"requests_per_minute"`
+	Rate     int    `mapstructure:"rate"`
+	Burst    int    `mapstructure:"burst"`
+	Duration int    `mapstructure:"duration"`
+	Unit     string `mapstructure:"unit"`
+}
+
+// Redis configuration
+type RedisConfig struct {
+	URL      string `mapstructure:"url"`
+	Password string `mapstructure:"password"`
+	DB       int    `mapstructure:"db"`
 }
 
 // Complete application configuration
@@ -35,6 +45,9 @@ type Config struct {
 	Server      ServerConfig      `mapstructure:"server"`
 	Database    DatabaseConfig    `mapstructure:"database"`
 	JWT         JWTConfig         `mapstructure:"jwt"`
-	RateLimiter RateLimiterConfig `mapstructure:"rate_limiter"`
+	Redis       RedisConfig       `mapstructure:"redis"`
 	Env         string            `mapstructure:"env"`
+	RateLimiter struct {
+		App RateLimiterConfig `mapstructure:"app"`
+	} `mapstructure:"rate_limiter"`
 }

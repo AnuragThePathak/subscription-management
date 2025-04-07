@@ -15,6 +15,7 @@ import (
 	"github.com/anuragthepathak/subscription-management/wrappers"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-redis/redis_rate/v10"
 )
 
 func main() {
@@ -46,6 +47,22 @@ func main() {
 		}	
 	}
 
+	var redis *wrappers.Redis
+	{
+		redis = config.RedisConnection(cf.Redis)
+		if err = redis.Ping(context.Background()); err != nil {
+			slog.Error("Failed to connect to Redis",
+				slog.String("component", "main"),
+				slog.Any("error", err),
+			)
+			os.Exit(1)
+		}
+
+		_ = redis.Client.FlushDB(context.Background()).Err()
+	}
+
+	redisRateLimiter := redis_rate.NewLimiter(redis.Client)
+
 	var userRepository repositories.UserRepository
 	{
 		if userRepository, err = repositories.NewUserRepository(database.DB); err != nil {
@@ -60,6 +77,7 @@ func main() {
 	userService := services.NewUserService(userRepository)
 	jwtService := services.NewJWTService(cf.JWT)
 	authService := services.NewAuthService(userRepository, jwtService)
+	appRateLimiterService := services.NewRateLimiterService(redisRateLimiter, config.NewRateLimit(&cf.RateLimiter.App), "app")
 
 	var apiServer wrappers.Server
 	{
@@ -67,6 +85,7 @@ func main() {
 		r := chi.NewRouter()
 		r.Use(middleware.Logger)
 		r.Use(middleware.Recoverer)
+		r.Use(middlewares.RateLimiter(appRateLimiterService))
 
 		// Setup routes
 		r.Mount("/api/v1/auth", controllers.NewAuthController(authService, userService))

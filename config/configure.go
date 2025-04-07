@@ -70,6 +70,12 @@ func (c *Config) Validate() error {
 	if c.JWT.Issuer == "" {
 		missing = append(missing, "jwt.issuer")
 	}
+	if c.Redis.URL == "" {
+		missing = append(missing, "redis.url")
+	}
+	if c.RateLimiter.App.Rate == 0 {
+		missing = append(missing, "rate_limiter.app.rate")
+	}
 
 	if len(missing) > 0 {
 		return fmt.Errorf("missing required config fields: %v", missing)

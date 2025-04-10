@@ -48,6 +48,7 @@ func main() {
 	}
 
 	var redis *wrappers.Redis
+	defer redis.Shutdown(context.Background())
 	{
 		redis = config.RedisConnection(cf.Redis)
 		if err = redis.Ping(context.Background()); err != nil {
@@ -73,11 +74,22 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	var subscriptionRepository repositories.SubscriptionRepository
+	{
+		if subscriptionRepository, err = repositories.NewSubscriptionRepository(database.DB); err != nil {
+			slog.Error("Failed to create subscription repository",
+				slog.String("component", "main"),
+				slog.Any("error", err),
+			)
+			os.Exit(1)
+		}
+	}
 
+	appRateLimiterService := services.NewRateLimiterService(redisRateLimiter, config.NewRateLimit(&cf.RateLimiter.App), "app")
 	userService := services.NewUserService(userRepository)
 	jwtService := services.NewJWTService(cf.JWT)
 	authService := services.NewAuthService(userRepository, jwtService)
-	appRateLimiterService := services.NewRateLimiterService(redisRateLimiter, config.NewRateLimit(&cf.RateLimiter.App), "app")
+	subscriptionService := services.NewSubscriptionService(subscriptionRepository)
 
 	var apiServer wrappers.Server
 	{
@@ -97,6 +109,7 @@ func main() {
 			
 			// User routes with authentication
 			r.Mount("/api/v1/users", controllers.NewUserController(userService))
+			r.Mount("/api/v1/subscriptions", controllers.NewSubscriptionController(subscriptionService))
 		})
 
 		// Create a new server configuration

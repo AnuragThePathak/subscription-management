@@ -3,127 +3,108 @@ package controllers
 import (
 	"net/http"
 
+	"github.com/anuragthepathak/subscription-management/endpoint"
+	"github.com/anuragthepathak/subscription-management/middlewares"
+	"github.com/anuragthepathak/subscription-management/models"
+	"github.com/anuragthepathak/subscription-management/services"
 	"github.com/go-chi/chi/v5"
 )
 
-type subscriptionsController struct {
-	// Add any dependencies you need here
+type subscriptionController struct {
+	subscriptionService services.SubscriptionService
 }
 
-func NewSubscriptionsController() http.Handler {
-	c := &subscriptionsController{}
+func NewSubscriptionController(subscriptionService services.SubscriptionService) http.Handler {
+	c := &subscriptionController{
+		subscriptionService,
+	}
 
 	r := chi.NewRouter()
-	r.Get("/", c.GetAllSubscriptions)
-	r.Get("/{id}", c.GetSubscriptionByID)
-	r.Post("/", c.CreateSubscription)
-	r.Put("/{id}", c.UpdateSubscription)
-	r.Delete("/{id}", c.DeleteSubscription)
-	r.Get("/user/{id}", c.GetSubscriptionsByUserID)
-	r.Put("{id}/cancel", c.CancelSubscription)
-	r.Get("upcoming-renewals", c.GetUpcomingRenewals)
-	
+	r.Post("/", c.createSubscription)
+	r.Get("/", c.getAllSubscriptions)
+	r.Get("/{id}", c.getSubscriptionByID)
+	r.Put("/{id}", c.updateSubscription)
+	r.Delete("/{id}", c.deleteSubscription)
+	r.Get("/user/{id}", c.getSubscriptionsByUserID)
+	r.Put("/{id}/cancel", c.cancelSubscription)
+	r.Get("/upcoming-renewals", c.getUpcomingRenewals)
+
 	return r
 }
 
-func (c *subscriptionsController) GetAllSubscriptions(w http.ResponseWriter, r *http.Request) {
-	// Implement the logic to get all subscriptions
-	// You can use c.authService to call the appropriate service method
-	// For example:
-	// subscriptions, err := c.authService.GetAllSubscriptions(req)
-	// if err != nil {
-	// 	http.Error(res, err.Error(), http.StatusInternalServerError)
-	// 	return
-	// }
-	// res.WriteHeader(http.StatusOK)
-	// json.NewEncoder(res).Encode(subscriptions)
+func (c *subscriptionController) createSubscription(w http.ResponseWriter, r *http.Request) {
+	subscription := models.SubscriptionRequest{}
+	userID, _ := middlewares.GetUserID(r.Context())
+
+	endpoint.ServeRequest(
+		endpoint.InternalRequest{
+			W:          w,
+			R:          r,
+			ReqBodyObj: &subscription,
+			EndpointLogic: func() (any, error) {
+				return endpoint.ToResponse(c.subscriptionService.CreateSubscription(r.Context(), subscription.ToModel(), userID))
+			},
+			SuccessCode: http.StatusCreated,
+		},
+	)
 }
 
-func (c *subscriptionsController) GetSubscriptionByID(w http.ResponseWriter, r *http.Request) {
-	// Implement the logic to get a subscription by ID
-	// You can use c.authService to call the appropriate service method
-	// For example:
-	// subscription, err := c.authService.GetSubscriptionByID(req)
-	// if err != nil {
-	// 	http.Error(res, err.Error(), http.StatusInternalServerError)
-	// 	return
-	// }
-	// res.WriteHeader(http.StatusOK)
-	// json.NewEncoder(res).Encode(subscription)
+func (c *subscriptionController) getAllSubscriptions(w http.ResponseWriter, r *http.Request) {
+	endpoint.ServeRequest(
+		endpoint.InternalRequest{
+			W: w,
+			R: r,
+			EndpointLogic: func() (any, error) {
+				return endpoint.ToResponseSlice(c.subscriptionService.GetAllSubscriptions(r.Context()))
+			},
+			SuccessCode: http.StatusOK,
+		},
+	)
 }
 
-func (c *subscriptionsController) CreateSubscription(w http.ResponseWriter, r *http.Request) {
-	// Implement the logic to create a subscription
-	// You can use c.authService to call the appropriate service method
-	// For example:
-	// subscription, err := c.authService.CreateSubscription(req)
-	// if err != nil {
-	// 	http.Error(res, err.Error(), http.StatusInternalServerError)
-	// 	return
-	// }
-	// res.WriteHeader(http.StatusCreated)
-	// json.NewEncoder(res).Encode(subscription)
+func (c *subscriptionController) getSubscriptionByID(w http.ResponseWriter, r *http.Request) {
+	subscriptionID := chi.URLParam(r, "id")
+
+	endpoint.ServeRequest(
+		endpoint.InternalRequest{
+			W: w,
+			R: r,
+			EndpointLogic: func() (any, error) {
+				return endpoint.ToResponse(c.subscriptionService.GetSubscriptionByID(r.Context(), subscriptionID))
+			},
+			SuccessCode: http.StatusOK,
+		},
+	)
 }
 
-func (c *subscriptionsController) UpdateSubscription(w http.ResponseWriter, r *http.Request) {
-	// Implement the logic to update a subscription
-	// You can use c.authService to call the appropriate service method
-	// For example:
-	// subscription, err := c.authService.UpdateSubscription(req)
-	// if err != nil {
-	// 	http.Error(res, err.Error(), http.StatusInternalServerError)
-	// 	return
-	// }
-	// res.WriteHeader(http.StatusOK)
-	// json.NewEncoder(res).Encode(subscription)
+func (c *subscriptionController) updateSubscription(w http.ResponseWriter, r *http.Request) {
+	// Implementation for updating a subscription
 }
 
-func (c *subscriptionsController) DeleteSubscription(w http.ResponseWriter, r *http.Request) {
-	// Implement the logic to delete a subscription
-	// You can use c.authService to call the appropriate service method
-	// For example:
-	// err := c.authService.DeleteSubscription(req)
-	// if err != nil {
-	// 	http.Error(res, err.Error(), http.StatusInternalServerError)
-	// 	return
-	// }
-	// res.WriteHeader(http.StatusOK)
+func (c *subscriptionController) deleteSubscription(w http.ResponseWriter, r *http.Request) {
+	// Implementation for deleting a subscription
 }
 
-func (c *subscriptionsController) GetSubscriptionsByUserID(w http.ResponseWriter, r *http.Request) {
-	// Implement the logic to get subscriptions by user ID
-	// You can use c.authService to call the appropriate service method
-	// For example:
-	// subscriptions, err := c.authService.GetSubscriptionsByUserID(req)
-	// if err != nil {
-	// 	http.Error(res, err.Error(), http.StatusInternalServerError)
-	// 	return
-	// }
-	// res.WriteHeader(http.StatusOK)
-	// json.NewEncoder(res).Encode(subscriptions)
+func (c *subscriptionController) getSubscriptionsByUserID(w http.ResponseWriter, r *http.Request) {
+	userID := chi.URLParam(r, "id")
+	claimedUserID, _ := middlewares.GetUserID(r.Context())
+
+	endpoint.ServeRequest(
+		endpoint.InternalRequest{
+			W: w,
+			R: r,
+			EndpointLogic: func() (any, error) {
+				return endpoint.ToResponseSlice(c.subscriptionService.GetSubscriptionsByUserID(r.Context(), userID, claimedUserID))
+			},
+			SuccessCode: http.StatusOK,
+		},
+	)
 }
 
-func (c *subscriptionsController) CancelSubscription(w http.ResponseWriter, r *http.Request) {
-	// Implement the logic to cancel a subscription
-	// You can use c.authService to call the appropriate service method
-	// For example:
-	// err := c.authService.CancelSubscription(req)
-	// if err != nil {
-	// 	http.Error(res, err.Error(), http.StatusInternalServerError)
-	// 	return
-	// }
-	// res.WriteHeader(http.StatusOK)
+func (c *subscriptionController) cancelSubscription(w http.ResponseWriter, r *http.Request) {
+	// Implementation for canceling a subscription
 }
 
-func (c *subscriptionsController) GetUpcomingRenewals(w http.ResponseWriter, r *http.Request) {
-	// Implement the logic to get upcoming renewals
-	// You can use c.authService to call the appropriate service method
-	// For example:
-	// renewals, err := c.authService.GetUpcomingRenewals(req)
-	// if err != nil {
-	// 	http.Error(res, err.Error(), http.StatusInternalServerError)
-	// 	return
-	// }
-	// res.WriteHeader(http.StatusOK)
-	// json.NewEncoder(res).Encode(renewals)
+func (c *subscriptionController) getUpcomingRenewals(w http.ResponseWriter, r *http.Request) {
+	// Implementation for getting upcoming renewals
 }

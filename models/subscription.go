@@ -153,101 +153,6 @@ type SubscriptionCollection struct {
 	collection *mongo.Collection
 }
 
-// NewSubscriptionCollection creates a new subscription collection handler
-func NewSubscriptionCollection(db *mongo.Database) *SubscriptionCollection {
-	// Create collection
-	collection := db.Collection("subscriptions")
-
-	// Create index on user field for faster lookups
-	indexModel := mongo.IndexModel{
-		Keys: bson.D{{Key: "user", Value: 1}},
-	}
-	_, err := collection.Indexes().CreateOne(context.Background(), indexModel)
-	if err != nil {
-		panic(err)
-	}
-
-	return &SubscriptionCollection{
-		collection: collection,
-	}
-}
-
-// Create adds a new subscription to the database
-func (sc *SubscriptionCollection) Create(ctx context.Context, subscription *Subscription) error {
-	// Pre-save logic to set renewal date if not provided
-	if subscription.RenewalDate.IsZero() {
-		renewalPeriods := map[Frequency]int{
-			Daily:   1,
-			Weekly:  7,
-			Monthly: 30,
-			Yearly:  365,
-		}
-		
-		// Get days to add based on frequency
-		daysToAdd := renewalPeriods[subscription.Frequency]
-		
-		// Set renewal date based on start date and frequency
-		subscription.RenewalDate = subscription.StartDate.AddDate(0, 0, daysToAdd)
-	}
-	
-	// Check if subscription is already expired
-	if subscription.RenewalDate.Before(time.Now()) {
-		subscription.Status = Expired
-	}
-
-	// Continue with validation
-	if err := subscription.Validate(); err != nil {
-		return err
-	}
-
-	// Set default values
-	if subscription.Currency == "" {
-		subscription.Currency = USD
-	}
-	if subscription.Status == "" {
-		subscription.Status = Active
-	}
-
-	// Set timestamps
-	now := time.Now()
-	subscription.CreatedAt = now
-	subscription.UpdatedAt = now
-
-	// Set ID if not provided
-	if subscription.ID.IsZero() {
-		subscription.ID = bson.NewObjectID()
-	}
-
-	// Insert into database
-	_, err := sc.collection.InsertOne(ctx, subscription)
-	return err
-}
-
-// GetByID retrieves a subscription by its ID
-func (sc *SubscriptionCollection) GetByID(ctx context.Context, id bson.ObjectID) (*Subscription, error) {
-	var subscription Subscription
-	err := sc.collection.FindOne(ctx, bson.M{"_id": id}).Decode(&subscription)
-	if err != nil {
-		return nil, err
-	}
-	return &subscription, nil
-}
-
-// GetByUser retrieves all subscriptions for a specific user
-func (sc *SubscriptionCollection) GetByUser(ctx context.Context, userID bson.ObjectID) ([]*Subscription, error) {
-	cursor, err := sc.collection.Find(ctx, bson.M{"user": userID})
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	var subscriptions []*Subscription
-	if err = cursor.All(ctx, &subscriptions); err != nil {
-		return nil, err
-	}
-	return subscriptions, nil
-}
-
 // Update updates an existing subscription
 func (sc *SubscriptionCollection) Update(ctx context.Context, subscription *Subscription) error {
 	// Pre-save logic to set renewal date if not provided
@@ -295,11 +200,11 @@ type SubscriptionRequest struct {
 	Category      Category  `json:"category" validate:"required"`
 	PaymentMethod string    `json:"paymentMethod" validate:"required"`
 	StartDate     time.Time `json:"startDate" validate:"required"`
-	RenewalDate   time.Time `json:"renewalDate" validate:"required,gtfield=StartDate"`
+	RenewalDate   time.Time `json:"renewalDate"`
 }
 
 // ToSubscription converts a request to a Subscription model
-func (r *SubscriptionRequest) ToSubscription(userID bson.ObjectID) *Subscription {
+func (r *SubscriptionRequest) ToModel() *Subscription {
 	return &Subscription{
 		Name:          r.Name,
 		Price:         r.Price,
@@ -310,7 +215,6 @@ func (r *SubscriptionRequest) ToSubscription(userID bson.ObjectID) *Subscription
 		Status:        Active,
 		StartDate:     r.StartDate,
 		RenewalDate:   r.RenewalDate,
-		UserID:        userID,
 	}
 }
 
@@ -326,6 +230,7 @@ type SubscriptionResponse struct {
 	Status        string    `json:"status"`
 	StartDate     time.Time `json:"startDate"`
 	RenewalDate   time.Time `json:"renewalDate"`
+	UserID        string    `json:"userId"`
 	CreatedAt     time.Time `json:"createdAt"`
 	UpdatedAt     time.Time `json:"updatedAt"`
 }
@@ -343,6 +248,7 @@ func (s *Subscription) ToResponse() *SubscriptionResponse {
 		Status:        string(s.Status),
 		StartDate:     s.StartDate,
 		RenewalDate:   s.RenewalDate,
+		UserID:        s.UserID.Hex(),
 		CreatedAt:     s.CreatedAt,
 		UpdatedAt:     s.UpdatedAt,
 	}

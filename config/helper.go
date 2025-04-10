@@ -13,14 +13,14 @@ import (
 )
 
 func DatabaseConnection(dbConfig DatabaseConfig) (*wrappers.Database, error) {
-    dbClientOpts := options.Client().ApplyURI(dbConfig.URL)
-    db := wrappers.Database{}
+	dbClientOpts := options.Client().ApplyURI(dbConfig.URL)
+	db := wrappers.Database{}
 	var err error
-    if db.Client, err = mongo.Connect(dbClientOpts); err != nil {
-        return nil, err
-    }
-    db.DB = db.Client.Database(dbConfig.Name)
-    return &db, nil
+	if db.Client, err = mongo.Connect(dbClientOpts); err != nil {
+		return nil, err
+	}
+	db.DB = db.Client.Database(dbConfig.Name)
+	return &db, nil
 }
 
 func RedisConnection(redisConfig RedisConfig) *wrappers.Redis {
@@ -56,26 +56,15 @@ func NewRateLimit(rateConfig *RateLimiterConfig) *redis_rate.Limit {
 	if rateConfig.Burst == 0 {
 		rateConfig.Burst = rateConfig.Rate
 	}
-	limit := redis_rate.Limit{
-		Rate:  rateConfig.Rate,
-		Burst: rateConfig.Burst,
+	if rateConfig.Period == 0 {
+		rateConfig.Period = time.Minute
 	}
+	slog.Debug("Rate limit config", "rate", rateConfig.Rate, "burst", rateConfig.Burst, "period", rateConfig.Period)
 
-	switch rateConfig.Unit {
-	case "second":
-		limit.Period = time.Duration(rateConfig.Duration) * time.Second
-	case "minute":
-		limit.Period = time.Duration(rateConfig.Duration) * time.Minute
-	case "hour":
-		limit.Period = time.Duration(rateConfig.Duration) * time.Hour
-	case "day":
-		limit.Period = time.Duration(rateConfig.Duration) * time.Hour * 24
-	case "week":
-		limit.Period = time.Duration(rateConfig.Duration) * time.Hour * 24 * 7
-	case "month":
-		limit.Period = time.Duration(rateConfig.Duration) * time.Hour * 24 * 30
-	default:
-		limit.Period = time.Duration(rateConfig.Duration) * time.Second
+	limit := redis_rate.Limit{
+		Rate:   rateConfig.Rate,
+		Burst:  rateConfig.Burst,
+		Period: rateConfig.Period,
 	}
 
 	return &limit

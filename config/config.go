@@ -1,5 +1,7 @@
 package config
 
+import "time"
+
 // Server configuration
 type ServerConfig struct {
 	Port int `mapstructure:"port"`
@@ -27,10 +29,9 @@ type JWTConfig struct {
 
 // Rate limiter configuration
 type RateLimiterConfig struct {
-	Rate     int    `mapstructure:"rate"`
-	Burst    int    `mapstructure:"burst"`
-	Duration int    `mapstructure:"duration"`
-	Unit     string `mapstructure:"unit"`
+	Rate   int           `mapstructure:"rate"`
+	Burst  int           `mapstructure:"burst"`
+	Period time.Duration `mapstructure:"period"`
 }
 
 // Redis configuration
@@ -40,13 +41,20 @@ type RedisConfig struct {
 	DB       int    `mapstructure:"db"`
 }
 
+// SchedulerConfig represents the configuration for the scheduler
+type SchedulerConfig struct {
+	Interval      time.Duration `mapstructure:"INTERVAL"`
+	ReminderDays  []int         `mapstructure:"REMINDER_DAYS"`
+	EnabledForEnv []string      `mapstructure:"ENABLED_FOR_ENV"`
+}
+
 // Complete application configuration
 type Config struct {
-	Server      ServerConfig      `mapstructure:"server"`
-	Database    DatabaseConfig    `mapstructure:"database"`
-	JWT         JWTConfig         `mapstructure:"jwt"`
-	Redis       RedisConfig       `mapstructure:"redis"`
-	Env         string            `mapstructure:"env"`
+	Server      ServerConfig   `mapstructure:"server"`
+	Database    DatabaseConfig `mapstructure:"database"`
+	JWT         JWTConfig      `mapstructure:"jwt"`
+	Redis       RedisConfig    `mapstructure:"redis"`
+	Env         string         `mapstructure:"env"`
 	RateLimiter struct {
 		App RateLimiterConfig `mapstructure:"app"`
 	} `mapstructure:"rate_limiter"`

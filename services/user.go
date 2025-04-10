@@ -80,10 +80,5 @@ func (us *userService) GetUserByID(ctx context.Context, id string) (*models.User
 		return nil, apperror.NewBadRequestError("Invalid user ID")
 	}
 
-	user, err := us.userRepository.FindByID(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	return user, nil
+	return us.userRepository.FindByID(ctx, userID)
 }

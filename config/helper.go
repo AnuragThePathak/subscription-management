@@ -7,6 +7,7 @@ import (
 
 	"github.com/anuragthepathak/subscription-management/wrappers"
 	"github.com/go-redis/redis_rate/v10"
+	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -68,4 +69,12 @@ func NewRateLimit(rateConfig *RateLimiterConfig) *redis_rate.Limit {
 	}
 
 	return &limit
+}
+
+func QueueRedisConfig(redisConfig RedisConfig) *asynq.RedisClientOpt {
+	return &asynq.RedisClientOpt{
+		Addr:     redisConfig.URL,
+		Password: redisConfig.Password,
+		DB:       redisConfig.DB,
+	}
 }

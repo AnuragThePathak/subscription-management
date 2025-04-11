@@ -26,14 +26,14 @@ type userRepository struct {
 	collection *mongo.Collection
 }
 
-func NewUserRepository(db *mongo.Database) (UserRepository, error) {
+func NewUserRepository(ctx context.Context, db *mongo.Database) (UserRepository, error) {
 	// Create a unique index for the email field
 	indexModel := mongo.IndexModel{
 		Keys:    bson.D{{Key: "email", Value: 1}},
 		Options: options.Index().SetUnique(true),
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	collection := db.Collection("users")

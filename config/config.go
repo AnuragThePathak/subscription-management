@@ -43,9 +43,16 @@ type RedisConfig struct {
 
 // SchedulerConfig represents the configuration for the scheduler
 type SchedulerConfig struct {
-	Interval      time.Duration `mapstructure:"INTERVAL"`
-	ReminderDays  []int         `mapstructure:"REMINDER_DAYS"`
-	EnabledForEnv []string      `mapstructure:"ENABLED_FOR_ENV"`
+	Interval      time.Duration `mapstructure:"interval"`
+	ReminderDays  []int         `mapstructure:"reminder_days"`
+	EnabledForEnv []string      `mapstructure:"enabled_for_env"`
+}
+
+// WorkerConfig represents the configuration for the worker
+type QueueWorkerConfig struct {
+	Concurrency   int      `mapstructure:"concurrency"`
+	QueueName     string   `mapstructure:"queue_name"`
+	EnabledForEnv []string `mapstructure:"enabled_for_env"`
 }
 
 // Complete application configuration
@@ -58,4 +65,6 @@ type Config struct {
 	RateLimiter struct {
 		App RateLimiterConfig `mapstructure:"app"`
 	} `mapstructure:"rate_limiter"`
+	Scheduler SchedulerConfig `mapstructure:"scheduler"`
+	QueueWorker    QueueWorkerConfig `mapstructure:"queue_worker"`
 }

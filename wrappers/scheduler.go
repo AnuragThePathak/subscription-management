@@ -3,25 +3,23 @@ package wrappers
 import (
 	"context"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/anuragthepathak/subscription-management/queue"
 )
 
-type Redis struct {
-	Client *redis.Client
+type Scheduler struct {
+	Scheduler *queue.SubscriptionScheduler
 }
 
-func (r *Redis) Shutdown(ctx context.Context) error {
+func (s *Scheduler) Shutdown(ctx context.Context) error {
 	// Check if context is already done before we even start
     if ctx.Err() != nil {
         return ctx.Err()
     }
     
-    // Since r.Client.Close() doesn't support context cancellation,
-    // we need to run it in a goroutine and try to respect the context deadline
     closeChan := make(chan error, 1)
     
     go func() {
-        closeChan <- r.Client.Close()
+        closeChan <- s.Scheduler.Close()
     }()
     
     // Wait for either Close() to complete or context to expire
@@ -33,11 +31,4 @@ func (r *Redis) Shutdown(ctx context.Context) error {
         // Let the goroutine complete in the background
         return ctx.Err()
     }
-}
-
-func (r *Redis) Ping(ctx context.Context) error {
-	if err := r.Client.Ping(ctx).Err(); err != nil {
-		return err
-	}
-	return nil
 }

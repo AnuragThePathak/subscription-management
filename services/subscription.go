@@ -22,7 +22,6 @@ type SubscriptionService interface {
 }
 
 type subscriptionService struct {
-
 	subscriptionRepository repositories.SubscriptionRepository
 }
 
@@ -41,20 +40,10 @@ func (s *subscriptionService) CreateSubscription(ctx context.Context, subscripti
 	subscription.UserID = userID
 
 	if subscription.RenewalDate.IsZero() {
-		renewalPeriods := map[models.Frequency]int{
-			models.Daily:   1,
-			models.Weekly:  7,
-			models.Monthly: 30,
-			models.Yearly:  365,
-		}
-		
-		// Get days to add based on frequency
-		daysToAdd := renewalPeriods[subscription.Frequency]
-		
 		// Set renewal date based on start date and frequency
-		subscription.RenewalDate = subscription.StartDate.AddDate(0, 0, daysToAdd)
+		subscription.RenewalDate = calcRenewalDate(subscription.StartDate, subscription.Frequency)
 	}
-	
+
 	// Check if subscription is already expired
 	if subscription.RenewalDate.Before(time.Now()) {
 		subscription.Status = models.Expired
@@ -109,4 +98,19 @@ func (s *subscriptionService) GetSubscriptionsByUserID(ctx context.Context, user
 	}
 
 	return s.subscriptionRepository.GetByUserID(ctx, userID)
+}
+
+func calcRenewalDate(start time.Time, frequency models.Frequency) time.Time {
+	switch frequency {
+	case models.Daily:
+		return start.AddDate(0, 0, 1)
+	case models.Weekly:
+		return start.AddDate(0, 0, 7)
+	case models.Monthly:
+		return start.AddDate(0, 1, 0)
+	case models.Yearly:
+		return start.AddDate(1, 0, 0)
+	default:
+		return start // fallback, no change
+	}
 }

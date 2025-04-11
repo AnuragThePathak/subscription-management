@@ -4,12 +4,15 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/AnuragThePathak/my-go-packages/srv"
 	"github.com/anuragthepathak/subscription-management/config"
 	"github.com/anuragthepathak/subscription-management/controllers"
 	"github.com/anuragthepathak/subscription-management/middlewares"
+	"github.com/anuragthepathak/subscription-management/queue"
 	"github.com/anuragthepathak/subscription-management/repositories"
 	"github.com/anuragthepathak/subscription-management/services"
 	"github.com/anuragthepathak/subscription-management/wrappers"
@@ -20,6 +23,8 @@ import (
 
 func main() {
 	var err error
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer cancel()
 
 	var cf *config.Config
 	{
@@ -44,14 +49,13 @@ func main() {
 				slog.Any("error", err),
 			)
 			os.Exit(1)
-		}	
+		}
 	}
 
 	var redis *wrappers.Redis
-	defer redis.Shutdown(context.Background())
 	{
 		redis = config.RedisConnection(cf.Redis)
-		if err = redis.Ping(context.Background()); err != nil {
+		if err = redis.Ping(ctx); err != nil {
 			slog.Error("Failed to connect to Redis",
 				slog.String("component", "main"),
 				slog.Any("error", err),
@@ -59,29 +63,69 @@ func main() {
 			os.Exit(1)
 		}
 
-		_ = redis.Client.FlushDB(context.Background()).Err()
+		_ = redis.Client.FlushDB(ctx).Err()
 	}
 
 	redisRateLimiter := redis_rate.NewLimiter(redis.Client)
 
 	var userRepository repositories.UserRepository
+	var subscriptionRepository repositories.SubscriptionRepository
 	{
-		if userRepository, err = repositories.NewUserRepository(database.DB); err != nil {
+		if userRepository, err = repositories.NewUserRepository(ctx, database.DB); err != nil {
 			slog.Error("Failed to create user repository",
 				slog.String("component", "main"),
 				slog.Any("error", err),
 			)
 			os.Exit(1)
 		}
-	}
-	var subscriptionRepository repositories.SubscriptionRepository
-	{
-		if subscriptionRepository, err = repositories.NewSubscriptionRepository(database.DB); err != nil {
+
+		if subscriptionRepository, err = repositories.NewSubscriptionRepository(ctx, database.DB); err != nil {
 			slog.Error("Failed to create subscription repository",
 				slog.String("component", "main"),
 				slog.Any("error", err),
 			)
 			os.Exit(1)
+		}
+	}
+
+	var scheduler *wrappers.Scheduler
+	var queueWorker *wrappers.QueueWorker
+	{
+		sch := queue.NewSubscriptionScheduler(
+			subscriptionRepository,
+			config.QueueRedisConfig(cf.Redis),
+			cf.Scheduler.Interval,
+			cf.Scheduler.ReminderDays,
+		)
+		go func() {
+			if err = sch.Start(ctx); err != nil && err != context.Canceled {
+				slog.Error("Scheduler failed",
+					slog.String("component", "main"),
+					slog.Any("error", err),
+				)
+			}
+		}()
+
+		scheduler = &wrappers.Scheduler{
+			Scheduler: sch,
+		}
+	
+		worker := queue.NewReminderWorker(
+			subscriptionRepository,
+			config.QueueRedisConfig(cf.Redis),
+			cf.QueueWorker.Concurrency,
+		)
+		go func() {
+			if err = worker.Start(ctx); err != nil && err != context.Canceled {
+				slog.Error("Worker failed",
+					slog.String("component", "main"),
+					slog.Any("error", err),
+				)
+			}
+		}()
+
+		queueWorker = &wrappers.QueueWorker{
+			Worker: worker,
 		}
 	}
 
@@ -106,7 +150,7 @@ func main() {
 		r.Group(func(r chi.Router) {
 			// Apply authentication middleware
 			r.Use(middlewares.Authentication(jwtService))
-			
+
 			// User routes with authentication
 			r.Mount("/api/v1/users", controllers.NewUserController(userService))
 			r.Mount("/api/v1/subscriptions", controllers.NewSubscriptionController(subscriptionService))
@@ -114,10 +158,10 @@ func main() {
 
 		// Create a new server configuration
 		apiserverConfig := srv.ServerConfig{
-			Port:         cf.Server.Port,
-			TLSEnabled:   cf.Server.TLS.Enabled,
-			TLSCertPath:  cf.Server.TLS.CertPath,
-			TLSKeyPath:   cf.Server.TLS.KeyPath,
+			Port:        cf.Server.Port,
+			TLSEnabled:  cf.Server.TLS.Enabled,
+			TLSCertPath: cf.Server.TLS.CertPath,
+			TLSKeyPath:  cf.Server.TLS.KeyPath,
 		}
 		if err != nil {
 			slog.Error("Failed to load server configuration",
@@ -131,8 +175,11 @@ func main() {
 	}
 
 	apiServer.StartWithGracefulShutdown(
-		context.Background(),
+		ctx,
 		10*time.Second,
 		database,
+		redis,
+		scheduler,
+		queueWorker,
 	)
 }

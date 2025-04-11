@@ -20,6 +20,12 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("jwt.access_timeout", "1")
 	viper.SetDefault("jwt.refresh_timeout", "72")
 	viper.SetDefault("rate_limiter.requests_per_minute", 3 * 60)
+	
+	viper.SetDefault("scheduler.interval", "12h")
+	viper.SetDefault("scheduler.reminder_days", [3]int{1, 3, 7})
+
+	viper.SetDefault("queue_worker.concurrency", 2)
+	viper.SetDefault("queue_worker.queue_name", "default")
 
 	// Read the YAML configuration file.
 	if err := viper.ReadInConfig(); err != nil {
@@ -75,6 +81,9 @@ func (c *Config) Validate() error {
 	}
 	if c.RateLimiter.App.Rate == 0 {
 		missing = append(missing, "rate_limiter.app.rate")
+	}
+	if c.Redis.URL == "" {
+		missing = append(missing, "redis.url")
 	}
 
 	if len(missing) > 0 {

@@ -11,6 +11,7 @@ import (
 	"github.com/AnuragThePathak/my-go-packages/srv"
 	"github.com/anuragthepathak/subscription-management/config"
 	"github.com/anuragthepathak/subscription-management/controllers"
+	"github.com/anuragthepathak/subscription-management/email"
 	"github.com/anuragthepathak/subscription-management/middlewares"
 	"github.com/anuragthepathak/subscription-management/queue"
 	"github.com/anuragthepathak/subscription-management/repositories"
@@ -63,7 +64,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		_ = redis.Client.FlushDB(ctx).Err()
+		// _ = redis.Client.FlushDB(ctx).Err()
 	}
 
 	redisRateLimiter := redis_rate.NewLimiter(redis.Client)
@@ -93,6 +94,7 @@ func main() {
 	{
 		sch := queue.NewSubscriptionScheduler(
 			subscriptionRepository,
+			redis.Client,
 			config.QueueRedisConfig(cf.Redis),
 			cf.Scheduler.Interval,
 			cf.Scheduler.ReminderDays,
@@ -112,6 +114,9 @@ func main() {
 	
 		worker := queue.NewReminderWorker(
 			subscriptionRepository,
+			userRepository,
+			email.NewEmailSender(cf.Email),
+			redis.Client,
 			config.QueueRedisConfig(cf.Redis),
 			cf.QueueWorker.Concurrency,
 		)

@@ -19,13 +19,16 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("server.tls.enabled", false)
 	viper.SetDefault("jwt.access_timeout", "1")
 	viper.SetDefault("jwt.refresh_timeout", "72")
-	viper.SetDefault("rate_limiter.requests_per_minute", 3 * 60)
-	
+	viper.SetDefault("rate_limiter.requests_per_minute", 3*60)
+
 	viper.SetDefault("scheduler.interval", "12h")
 	viper.SetDefault("scheduler.reminder_days", [3]int{1, 3, 7})
 
 	viper.SetDefault("queue_worker.concurrency", 2)
 	viper.SetDefault("queue_worker.queue_name", "default")
+
+	viper.SetDefault("email.smtp_port", 587)
+	viper.SetDefault("email.from_name", "Subscription Management")
 
 	// Read the YAML configuration file.
 	if err := viper.ReadInConfig(); err != nil {
@@ -51,7 +54,7 @@ func LoadConfig() (*Config, error) {
 
 func (c *Config) Validate() error {
 	var missing []string
-	
+
 	if c.Server.TLS.Enabled {
 		if c.Server.TLS.CertPath == "" {
 			missing = append(missing, "server.tls.cert_path")
@@ -84,6 +87,18 @@ func (c *Config) Validate() error {
 	}
 	if c.Redis.URL == "" {
 		missing = append(missing, "redis.url")
+	}
+	if c.Email.SMTPHost == "" {
+		missing = append(missing, "email.smtp_host")
+	}
+	if c.Email.FromEmail == "" {
+		missing = append(missing, "email.from_email")
+	}
+	if c.Email.SMTPUsername == "" {
+		missing = append(missing, "email.smtp_username")
+	}
+	if c.Email.SMTPPassword == "" {
+		missing = append(missing, "email.smtp_password")
 	}
 
 	if len(missing) > 0 {

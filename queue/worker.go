@@ -5,22 +5,31 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
+	"github.com/anuragthepathak/subscription-management/email"
 	"github.com/anuragthepathak/subscription-management/models"
 	"github.com/anuragthepathak/subscription-management/repositories"
 	"github.com/hibiken/asynq"
+	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 // ReminderWorker handles processing of reminder tasks
 type ReminderWorker struct {
-	subscriptionRepo repositories.SubscriptionRepository
-	server           *asynq.Server
+	subscriptionRepository repositories.SubscriptionRepository
+	userRepository         repositories.UserRepository
+	emailSender            *email.EmailSender
+	redisClient            *redis.Client
+	server                 *asynq.Server
 }
 
 // NewReminderWorker creates a new reminder worker
 func NewReminderWorker(
-	subscriptionRepo repositories.SubscriptionRepository,
+	subscriptionRepository repositories.SubscriptionRepository,
+	userRepository repositories.UserRepository,
+	emailSender *email.EmailSender,
+	redisClient *redis.Client,
 	redisConfig *asynq.RedisClientOpt,
 	concurrency int,
 ) *ReminderWorker {
@@ -37,8 +46,11 @@ func NewReminderWorker(
 	)
 
 	return &ReminderWorker{
-		subscriptionRepo: subscriptionRepo,
-		server:           server,
+		subscriptionRepository,
+		userRepository,
+		emailSender,
+		redisClient,
+		server,
 	}
 }
 
@@ -57,6 +69,8 @@ func (w *ReminderWorker) Start(ctx context.Context) error {
 
 // handleSubscriptionReminder processes a subscription reminder task
 func (w *ReminderWorker) handleSubscriptionReminder(ctx context.Context, task *asynq.Task) error {
+	slog.Debug("*********************************************************")
+
 	var payload ReminderPayload
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
 		return fmt.Errorf("failed to unmarshal task payload: %v", err)
@@ -75,7 +89,7 @@ func (w *ReminderWorker) handleSubscriptionReminder(ctx context.Context, task *a
 	}
 
 	// Fetch the subscription from the database
-	subscription, err := w.subscriptionRepo.GetByID(ctx, subscriptionID)
+	subscription, err := w.subscriptionRepository.GetByID(ctx, subscriptionID)
 	if err != nil {
 		return fmt.Errorf("failed to fetch subscription: %v", err)
 	}
@@ -95,23 +109,53 @@ func (w *ReminderWorker) handleSubscriptionReminder(ctx context.Context, task *a
 }
 
 // sendReminderNotification handles sending the actual reminder notification
-func (w *ReminderWorker) sendReminderNotification(_ context.Context, subscription *models.Subscription, daysBefore int) error {
-	// In a real implementation, this would send an email or push notification
-	// For now, we'll just log the notification
-	slog.Info("Would send reminder notification",
+func (w *ReminderWorker) sendReminderNotification(ctx context.Context, subscription *models.Subscription, daysBefore int) error {
+	// Get the user information
+	user, err := w.userRepository.FindByID(ctx, subscription.UserID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch user: %v", err)
+	}
+
+	// Send the email notification
+	if err = w.emailSender.SendReminderEmail(
+		ctx,
+		user.Email,
+		user.Name,
+		subscription,
+		daysBefore,
+	); err != nil {
+		slog.Error("Failed to send reminder email",
+			slog.String("component", "worker"),
+			slog.String("subscription_id", subscription.ID.Hex()),
+			slog.String("user_email", user.Email),
+			slog.Any("error", err),
+		)
+		return fmt.Errorf("failed to send reminder email: %v", err)
+	}
+
+	slog.Info("Reminder notification sent successfully",
 		slog.String("component", "worker"),
 		slog.String("subscription_id", subscription.ID.Hex()),
 		slog.String("subscription_name", subscription.Name),
 		slog.Int("days_before", daysBefore),
-		slog.Time("renewal_date", subscription.RenewalDate),
+		slog.String("user_email", user.Email),
 	)
 
-	// TODO: Add actual email sending logic here
-	// return sendReminderEmail({
-	//     to: subscription.user.email,
-	//     type: `${daysBefore} days before reminder`,
-	//     subscription: subscription,
-	// })
+	// Store in Redis that the reminder was sent
+	key := fmt.Sprintf("reminder_sent:%s:%d", subscription.ID.Hex(), daysBefore)
+	// Assuming your ReminderWorker has access to the Redis client
+	err = w.redisClient.SetEx(ctx, key, "", 24*time.Hour).Err()
+	if err != nil {
+		slog.Error("Failed to set reminder sent key in Redis",
+			slog.String("component", "worker"),
+			slog.String("subscription_id", subscription.ID.Hex()),
+			slog.Int("days_before", daysBefore),
+			slog.Any("error", err),
+		)
+		// Consider if this error should be fatal or just logged.
+		// If setting the Redis key fails, the scheduler might resend.
+		// Depending on your requirements, you might want to retry or handle this differently.
+	}
 
 	return nil
 }

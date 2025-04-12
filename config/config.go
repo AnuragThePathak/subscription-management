@@ -1,6 +1,10 @@
 package config
 
-import "time"
+import (
+	"time"
+
+	"github.com/anuragthepathak/subscription-management/email"
+)
 
 // Server configuration
 type ServerConfig struct {
@@ -57,14 +61,16 @@ type QueueWorkerConfig struct {
 
 // Complete application configuration
 type Config struct {
-	Server      ServerConfig   `mapstructure:"server"`
-	Database    DatabaseConfig `mapstructure:"database"`
-	JWT         JWTConfig      `mapstructure:"jwt"`
-	Redis       RedisConfig    `mapstructure:"redis"`
-	Env         string         `mapstructure:"env"`
+	Server      ServerConfig      `mapstructure:"server"`
+	Database    DatabaseConfig    `mapstructure:"database"`
+	JWT         JWTConfig         `mapstructure:"jwt"`
+	Redis       RedisConfig       `mapstructure:"redis"`
+	Env         string            `mapstructure:"env"`
+	Scheduler   SchedulerConfig   `mapstructure:"scheduler"`
+	QueueWorker QueueWorkerConfig `mapstructure:"queue_worker"`
+	Email       email.EmailConfig `mapstructure:"email"`
+
 	RateLimiter struct {
 		App RateLimiterConfig `mapstructure:"app"`
 	} `mapstructure:"rate_limiter"`
-	Scheduler SchedulerConfig `mapstructure:"scheduler"`
-	QueueWorker    QueueWorkerConfig `mapstructure:"queue_worker"`
 }

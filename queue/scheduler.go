@@ -10,6 +10,7 @@ import (
 	"github.com/anuragthepathak/subscription-management/models"
 	"github.com/anuragthepathak/subscription-management/repositories"
 	"github.com/hibiken/asynq"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -27,6 +28,7 @@ type ReminderPayload struct {
 // SubscriptionScheduler handles scheduling of subscription-related tasks
 type SubscriptionScheduler struct {
 	subscriptionRepo repositories.SubscriptionRepository
+	redisClient     *redis.Client
 	client           *asynq.Client
 	interval         time.Duration
 	reminderDays     []int
@@ -35,6 +37,7 @@ type SubscriptionScheduler struct {
 // NewSubscriptionScheduler creates a new subscription scheduler
 func NewSubscriptionScheduler(
 	subscriptionRepo repositories.SubscriptionRepository,
+	redisClient *redis.Client,
 	redisConfig *asynq.RedisClientOpt,
 	interval time.Duration,
 	reminderDays []int,
@@ -42,6 +45,7 @@ func NewSubscriptionScheduler(
 	client := asynq.NewClient(redisConfig)
 	return &SubscriptionScheduler{
 		subscriptionRepo: subscriptionRepo,
+		redisClient: redisClient,
 		client:           client,
 		interval:         interval,
 		reminderDays:     reminderDays,
@@ -89,16 +93,36 @@ func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
 	// Check each subscription for upcoming renewal dates
 	for _, subscription := range activeSubscriptions {
 		daysBefore := daysUntil(subscription.RenewalDate, nil)
-		// Schedule a reminder task
-		if err := s.scheduleReminderTask(subscription, daysBefore); err != nil {
-			slog.Error("Failed to schedule reminder task",
+		redisKey := fmt.Sprintf("reminder_sent:%s:%d", subscription.ID.Hex(), daysBefore)
+		exists, err := s.redisClient.Exists(ctx, redisKey).Result()
+		if err != nil {
+			slog.Error("Failed to check Redis for sent reminder",
 				slog.String("component", "scheduler"),
 				slog.String("subscription_id", subscription.ID.Hex()),
 				slog.Int("days_before", daysBefore),
 				slog.Any("error", err),
 			)
+			// Consider how to handle this error - maybe still schedule? Or log and continue
+		}
+
+		if exists == 0 { // Key does not exist, reminder not sent recently
+			// Schedule a reminder task
+			if err := s.scheduleReminderTask(subscription, daysBefore); err != nil {
+				slog.Error("Failed to schedule reminder task",
+					slog.String("component", "scheduler"),
+					slog.String("subscription_id", subscription.ID.Hex()),
+					slog.Int("days_before", daysBefore),
+					slog.Any("error", err),
+				)
+			} else {
+				slog.Info("Scheduled reminder task",
+					slog.String("component", "scheduler"),
+					slog.String("subscription_id", subscription.ID.Hex()),
+					slog.Int("days_before", daysBefore),
+				)
+			}
 		} else {
-			slog.Info("Scheduled reminder task",
+			slog.Info("Reminder already sent recently (Redis)",
 				slog.String("component", "scheduler"),
 				slog.String("subscription_id", subscription.ID.Hex()),
 				slog.Int("days_before", daysBefore),
@@ -114,8 +138,10 @@ func (s *SubscriptionScheduler) getSubscriptionsDueForReminder(ctx context.Conte
 	return s.subscriptionRepo.GetSubscriptionsDueForReminder(ctx, s.reminderDays)
 }
 
-// scheduleReminderTask creates and enqueues a reminder task
+// scheduleReminderTask creates and enqueues a reminder task only if it hasn't been sent yet
 func (s *SubscriptionScheduler) scheduleReminderTask(subscription *models.Subscription, daysBefore int) error {
+
+	// Prepare the task payload
 	payload := ReminderPayload{
 		SubscriptionID: subscription.ID.Hex(),
 		DaysBefore:     daysBefore,
@@ -127,32 +153,30 @@ func (s *SubscriptionScheduler) scheduleReminderTask(subscription *models.Subscr
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	// Use a deterministic TaskID to prevent duplicates
-	taskID := fmt.Sprintf("%s:%d", subscription.ID.Hex(), daysBefore)
-
 	task := asynq.NewTask(ReminderTask, payloadBytes)
 
-	// Enqueue the task with the custom TaskID
-	_, err = s.client.Enqueue(
+	// Enqueue task
+	info, err := s.client.Enqueue(
 		task,
-		asynq.TaskID(taskID),
-		asynq.Retention(24*time.Hour),
-		asynq.Timeout(45*time.Second), // Optional: Task handler gets 30s to finish
-		asynq.MaxRetry(3),             // Retry up to 3 times on failure
+		asynq.Unique(24*time.Hour),       // Prevent duplicate *pending* tasks
+		asynq.Retention(24*time.Hour),    // Keep task for 24h after processing
+		asynq.Timeout(45*time.Second),    // Handler must finish in 45s
+		asynq.MaxRetry(3),                // Retry up to 3 times if failed
 	)
 	if err != nil {
-		if err == asynq.ErrDuplicateTask {
-			slog.Debug("Duplicate task ignored",
-				slog.String("component", "scheduler"),
-				slog.String("task_id", taskID),
-			)
-			return nil // Not a fatal error
-		}
 		return fmt.Errorf("failed to enqueue task: %w", err)
 	}
 
+	slog.Info("Reminder task scheduled",
+		slog.String("component", "scheduler"),
+		slog.String("task_id", info.ID),
+		slog.String("subscription_id", subscription.ID.Hex()),
+		slog.Int("days_before", daysBefore),
+	)
+
 	return nil
 }
+
 
 // daysUntil returns the number of full calendar days between now and targetDate.
 // It truncates both times to midnight in the provided location (defaults to time.Local).

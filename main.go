@@ -41,6 +41,12 @@ func main() {
 	// Configure the default slog logger
 	config.SetupLogger(cf.Env)
 
+	// Improved logging for startup
+	slog.Info("Starting Subscription Management Service",
+		slog.String("environment", cf.Env),
+		slog.Int("port", cf.Server.Port),
+	)
+
 	// Connect to the database
 	var database *wrappers.Database
 	{
@@ -111,7 +117,7 @@ func main() {
 		scheduler = &wrappers.Scheduler{
 			Scheduler: sch,
 		}
-	
+
 		worker := queue.NewReminderWorker(
 			subscriptionRepository,
 			userRepository,
@@ -187,4 +193,6 @@ func main() {
 		scheduler,
 		queueWorker,
 	)
+
+	slog.Info("Server shutdown completed")
 }

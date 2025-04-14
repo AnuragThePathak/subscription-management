@@ -14,27 +14,27 @@ import (
 )
 
 const (
-	// ReminderTask is the task name for subscription reminders
+	// ReminderTask is the task name for subscription reminders.
 	ReminderTask = "subscription:reminder"
 )
 
-// ReminderPayload represents the data needed to process a reminder
+// ReminderPayload represents the data needed to process a reminder.
 type ReminderPayload struct {
 	SubscriptionID string `json:"subscription_id"`
 	DaysBefore     int    `json:"days_before"`
 	RenewalDate    string `json:"renewal_date"`
 }
 
-// SubscriptionScheduler handles scheduling of subscription-related tasks
+// SubscriptionScheduler handles scheduling of subscription-related tasks.
 type SubscriptionScheduler struct {
 	subscriptionRepo repositories.SubscriptionRepository
-	redisClient     *redis.Client
+	redisClient      *redis.Client
 	client           *asynq.Client
 	interval         time.Duration
 	reminderDays     []int
 }
 
-// NewSubscriptionScheduler creates a new subscription scheduler
+// NewSubscriptionScheduler creates a new subscription scheduler.
 func NewSubscriptionScheduler(
 	subscriptionRepo repositories.SubscriptionRepository,
 	redisClient *redis.Client,
@@ -45,19 +45,19 @@ func NewSubscriptionScheduler(
 	client := asynq.NewClient(redisConfig)
 	return &SubscriptionScheduler{
 		subscriptionRepo: subscriptionRepo,
-		redisClient: redisClient,
+		redisClient:      redisClient,
 		client:           client,
 		interval:         interval,
 		reminderDays:     reminderDays,
 	}
 }
 
-// Start begins the scheduler loop
+// Start begins the scheduler loop.
 func (s *SubscriptionScheduler) Start(ctx context.Context) error {
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
 
-	// Run once immediately
+	// Run once immediately.
 	if err := s.pollSubscriptions(ctx); err != nil {
 		slog.Error("Failed initial subscription polling",
 			slog.String("component", "scheduler"),
@@ -80,7 +80,7 @@ func (s *SubscriptionScheduler) Start(ctx context.Context) error {
 	}
 }
 
-// pollSubscriptions checks for subscriptions needing reminders and schedules tasks
+// pollSubscriptions checks for subscriptions needing reminders and schedules tasks.
 func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
 	slog.Info("Polling for subscriptions requiring reminders",
 		slog.String("component", "scheduler"))
@@ -90,7 +90,7 @@ func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
 		return err
 	}
 
-	// Check each subscription for upcoming renewal dates
+	// Check each subscription for upcoming renewal dates.
 	for _, subscription := range activeSubscriptions {
 		daysBefore := daysUntil(subscription.RenewalDate, nil)
 		redisKey := fmt.Sprintf("reminder_sent:%s:%d", subscription.ID.Hex(), daysBefore)
@@ -102,11 +102,10 @@ func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
 				slog.Int("days_before", daysBefore),
 				slog.Any("error", err),
 			)
-			// Consider how to handle this error - maybe still schedule? Or log and continue
+			continue
 		}
 
-		if exists == 0 { // Key does not exist, reminder not sent recently
-			// Schedule a reminder task
+		if exists == 0 { // Key does not exist, reminder not sent recently.
 			if err := s.scheduleReminderTask(subscription, daysBefore); err != nil {
 				slog.Error("Failed to schedule reminder task",
 					slog.String("component", "scheduler"),
@@ -133,15 +132,13 @@ func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
 	return nil
 }
 
-// getSubscriptionsDueForReminder retrieves subscriptions that are due for reminders
+// getSubscriptionsDueForReminder retrieves subscriptions that are due for reminders.
 func (s *SubscriptionScheduler) getSubscriptionsDueForReminder(ctx context.Context) ([]*models.Subscription, error) {
 	return s.subscriptionRepo.GetSubscriptionsDueForReminder(ctx, s.reminderDays)
 }
 
-// scheduleReminderTask creates and enqueues a reminder task only if it hasn't been sent yet
+// scheduleReminderTask creates and enqueues a reminder task.
 func (s *SubscriptionScheduler) scheduleReminderTask(subscription *models.Subscription, daysBefore int) error {
-
-	// Prepare the task payload
 	payload := ReminderPayload{
 		SubscriptionID: subscription.ID.Hex(),
 		DaysBefore:     daysBefore,
@@ -155,13 +152,12 @@ func (s *SubscriptionScheduler) scheduleReminderTask(subscription *models.Subscr
 
 	task := asynq.NewTask(ReminderTask, payloadBytes)
 
-	// Enqueue task
 	info, err := s.client.Enqueue(
 		task,
-		asynq.Unique(24*time.Hour),       // Prevent duplicate *pending* tasks
-		asynq.Retention(24*time.Hour),    // Keep task for 24h after processing
-		asynq.Timeout(45*time.Second),    // Handler must finish in 45s
-		asynq.MaxRetry(3),                // Retry up to 3 times if failed
+		asynq.Unique(24*time.Hour),    // Prevent duplicate pending tasks.
+		asynq.Retention(24*time.Hour), // Keep task for 24h after processing.
+		asynq.Timeout(45*time.Second), // Handler must finish in 45s.
+		asynq.MaxRetry(3),             // Retry up to 3 times if failed.
 	)
 	if err != nil {
 		return fmt.Errorf("failed to enqueue task: %w", err)
@@ -177,9 +173,7 @@ func (s *SubscriptionScheduler) scheduleReminderTask(subscription *models.Subscr
 	return nil
 }
 
-
 // daysUntil returns the number of full calendar days between now and targetDate.
-// It truncates both times to midnight in the provided location (defaults to time.Local).
 func daysUntil(targetDate time.Time, loc *time.Location) int {
 	if loc == nil {
 		loc = time.Local
@@ -191,7 +185,7 @@ func daysUntil(targetDate time.Time, loc *time.Location) int {
 	return int(target.Sub(now).Hours() / 24)
 }
 
-// Close cleanly shuts down the scheduler
+// Close cleanly shuts down the scheduler.
 func (s *SubscriptionScheduler) Close() error {
 	return s.client.Close()
 }

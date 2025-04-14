@@ -5,6 +5,7 @@ import (
 	"fmt"
 )
 
+// ErrorCode represents the type of error.
 type ErrorCode string
 
 const (
@@ -21,6 +22,7 @@ const (
 	ErrRateLimited   ErrorCode = "RATE_LIMITED"
 )
 
+// AppError defines a structured application error.
 type AppError interface {
 	error
 	Code() ErrorCode

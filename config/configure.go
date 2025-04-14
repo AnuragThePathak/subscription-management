@@ -7,51 +7,48 @@ import (
 	"github.com/spf13/viper"
 )
 
+// LoadConfig loads the application configuration from a YAML file or environment variables.
 func LoadConfig() (*Config, error) {
-	// Set the config file name and type.
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
-	// Add config paths (current directory in this case)
 	viper.AddConfigPath(".")
 
-	// Set default values.
+	// Set default values for configuration.
 	viper.SetDefault("server.port", 8080)
 	viper.SetDefault("server.tls.enabled", false)
 	viper.SetDefault("jwt.access_timeout", "1")
 	viper.SetDefault("jwt.refresh_timeout", "72")
 	viper.SetDefault("rate_limiter.requests_per_minute", 3*60)
-
 	viper.SetDefault("scheduler.interval", "12h")
 	viper.SetDefault("scheduler.reminder_days", [3]int{1, 3, 7})
-
 	viper.SetDefault("queue_worker.concurrency", 2)
 	viper.SetDefault("queue_worker.queue_name", "default")
-
 	viper.SetDefault("email.smtp_port", 587)
 	viper.SetDefault("email.from_name", "Subscription Management")
 
 	// Read the YAML configuration file.
 	if err := viper.ReadInConfig(); err != nil {
-		// If the config file is missing, it will log an error,
-		// but you might not want to stop execution if you're relying on env variables.
-		slog.Debug("Config file not found, using defaults", slog.String("error", err.Error()))
+		slog.Warn("Config file not found, using defaults", slog.String("error", err.Error()))
 	}
 
 	// Enable environment variables to override config file settings.
-	// Optionally set a prefix to avoid clashes.
 	viper.SetEnvPrefix("APP")
 	viper.AutomaticEnv()
 
 	var config Config
 	if err := viper.Unmarshal(&config); err != nil {
+		slog.Error("Failed to unmarshal configuration", slog.String("error", err.Error()))
 		return nil, err
 	}
 	if err := config.Validate(); err != nil {
+		slog.Error("Configuration validation failed", slog.String("error", err.Error()))
 		return nil, err
 	}
+	slog.Info("Configuration loaded successfully")
 	return &config, nil
 }
 
+// Validate checks for missing or invalid configuration fields.
 func (c *Config) Validate() error {
 	var missing []string
 
@@ -84,9 +81,6 @@ func (c *Config) Validate() error {
 	}
 	if c.RateLimiter.App.Rate == 0 {
 		missing = append(missing, "rate_limiter.app.rate")
-	}
-	if c.Redis.URL == "" {
-		missing = append(missing, "redis.url")
 	}
 	if c.Email.SMTPHost == "" {
 		missing = append(missing, "email.smtp_host")

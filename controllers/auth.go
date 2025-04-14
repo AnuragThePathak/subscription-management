@@ -14,7 +14,7 @@ type authController struct {
 	userService services.UserService
 }
 
-// NewAuthController creates a new auth controller
+// NewAuthController initializes the authentication controller with routes.
 func NewAuthController(authService services.AuthService, userService services.UserService) http.Handler {
 	c := &authController{
 		authService,
@@ -29,6 +29,7 @@ func NewAuthController(authService services.AuthService, userService services.Us
 	return r
 }
 
+// createUser handles user registration.
 func (c *authController) createUser(w http.ResponseWriter, r *http.Request) {
 	user := models.UserRequest{}
 
@@ -45,6 +46,7 @@ func (c *authController) createUser(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
+// login handles user login and token generation.
 func (c *authController) login(w http.ResponseWriter, r *http.Request) {
 	loginReq := models.LoginRequest{}
 
@@ -61,6 +63,7 @@ func (c *authController) login(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
+// refreshToken handles token refresh requests.
 func (c *authController) refreshToken(w http.ResponseWriter, r *http.Request) {
 	type refreshRequest struct {
 		RefreshToken string `json:"refreshToken" validate:"required"`

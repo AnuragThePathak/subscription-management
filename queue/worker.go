@@ -15,7 +15,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
-// ReminderWorker handles processing of reminder tasks
+// ReminderWorker handles processing of reminder tasks.
 type ReminderWorker struct {
 	subscriptionRepository repositories.SubscriptionRepository
 	userRepository         repositories.UserRepository
@@ -24,7 +24,7 @@ type ReminderWorker struct {
 	server                 *asynq.Server
 }
 
-// NewReminderWorker creates a new reminder worker
+// NewReminderWorker creates a new reminder worker.
 func NewReminderWorker(
 	subscriptionRepository repositories.SubscriptionRepository,
 	userRepository repositories.UserRepository,
@@ -33,13 +33,13 @@ func NewReminderWorker(
 	redisConfig *asynq.RedisClientOpt,
 	concurrency int,
 ) *ReminderWorker {
-	// Configure the server with appropriate concurrency
+	// Configure the server with appropriate concurrency.
 	server := asynq.NewServer(
 		redisConfig,
 		asynq.Config{
 			Concurrency: concurrency,
 			Queues: map[string]int{
-				"default": 10, // Process reminder tasks with higher priority
+				"default": 10, // Process reminder tasks with higher priority.
 				"low":     5,
 			},
 		},
@@ -54,23 +54,21 @@ func NewReminderWorker(
 	}
 }
 
-// Start begins processing tasks from the queue
+// Start begins processing tasks from the queue.
 func (w *ReminderWorker) Start(ctx context.Context) error {
-	// Register task handlers
+	// Register task handlers.
 	mux := asynq.NewServeMux()
 	mux.HandleFunc(ReminderTask, w.handleSubscriptionReminder)
 
-	// Start the worker server
+	// Start the worker server.
 	slog.Info("Starting reminder worker",
 		slog.String("component", "worker"))
 
 	return w.server.Start(mux)
 }
 
-// handleSubscriptionReminder processes a subscription reminder task
+// handleSubscriptionReminder processes a subscription reminder task.
 func (w *ReminderWorker) handleSubscriptionReminder(ctx context.Context, task *asynq.Task) error {
-	slog.Debug("*********************************************************")
-
 	var payload ReminderPayload
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
 		return fmt.Errorf("failed to unmarshal task payload: %v", err)
@@ -82,19 +80,19 @@ func (w *ReminderWorker) handleSubscriptionReminder(ctx context.Context, task *a
 		slog.Int("days_before", payload.DaysBefore),
 	)
 
-	// Parse the subscription ID
+	// Parse the subscription ID.
 	subscriptionID, err := bson.ObjectIDFromHex(payload.SubscriptionID)
 	if err != nil {
 		return fmt.Errorf("invalid subscription ID: %v", err)
 	}
 
-	// Fetch the subscription from the database
+	// Fetch the subscription from the database.
 	subscription, err := w.subscriptionRepository.GetByID(ctx, subscriptionID)
 	if err != nil {
 		return fmt.Errorf("failed to fetch subscription: %v", err)
 	}
 
-	// Ensure the subscription is still active
+	// Ensure the subscription is still active.
 	if subscription.Status != models.Active {
 		slog.Info("Skipping reminder for non-active subscription",
 			slog.String("component", "worker"),
@@ -104,19 +102,19 @@ func (w *ReminderWorker) handleSubscriptionReminder(ctx context.Context, task *a
 		return nil
 	}
 
-	// Process the reminder (in this case, we'd send an email)
+	// Process the reminder (send an email).
 	return w.sendReminderNotification(ctx, subscription, payload.DaysBefore)
 }
 
-// sendReminderNotification handles sending the actual reminder notification
+// sendReminderNotification handles sending the actual reminder notification.
 func (w *ReminderWorker) sendReminderNotification(ctx context.Context, subscription *models.Subscription, daysBefore int) error {
-	// Get the user information
+	// Get the user information.
 	user, err := w.userRepository.FindByID(ctx, subscription.UserID)
 	if err != nil {
 		return fmt.Errorf("failed to fetch user: %v", err)
 	}
 
-	// Send the email notification
+	// Send the email notification.
 	if err = w.emailSender.SendReminderEmail(
 		ctx,
 		user.Email,
@@ -141,9 +139,8 @@ func (w *ReminderWorker) sendReminderNotification(ctx context.Context, subscript
 		slog.String("user_email", user.Email),
 	)
 
-	// Store in Redis that the reminder was sent
+	// Store in Redis that the reminder was sent.
 	key := fmt.Sprintf("reminder_sent:%s:%d", subscription.ID.Hex(), daysBefore)
-	// Assuming your ReminderWorker has access to the Redis client
 	err = w.redisClient.SetEx(ctx, key, "", 24*time.Hour).Err()
 	if err != nil {
 		slog.Error("Failed to set reminder sent key in Redis",
@@ -152,15 +149,12 @@ func (w *ReminderWorker) sendReminderNotification(ctx context.Context, subscript
 			slog.Int("days_before", daysBefore),
 			slog.Any("error", err),
 		)
-		// Consider if this error should be fatal or just logged.
-		// If setting the Redis key fails, the scheduler might resend.
-		// Depending on your requirements, you might want to retry or handle this differently.
 	}
 
 	return nil
 }
 
-// Stop gracefully shuts down the worker
+// Stop gracefully shuts down the worker.
 func (w *ReminderWorker) Stop() {
 	w.server.Shutdown()
 }

@@ -11,7 +11,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// AuthService provides authentication operations
+// AuthService provides authentication operations.
 type AuthService interface {
 	Login(ctx context.Context, loginReq models.LoginRequest) (*models.TokenResponse, error)
 	RefreshToken(ctx context.Context, refreshToken string) (*models.TokenResponse, error)
@@ -22,7 +22,7 @@ type authService struct {
 	jwtService     JWTService
 }
 
-// NewAuthService creates a new instance of AuthService
+// NewAuthService creates a new instance of AuthService.
 func NewAuthService(userRepository repositories.UserRepository, jwtService JWTService) AuthService {
 	return &authService{
 		userRepository: userRepository,
@@ -30,20 +30,20 @@ func NewAuthService(userRepository repositories.UserRepository, jwtService JWTSe
 	}
 }
 
-// Login authenticates a user and returns JWT tokens
+// Login authenticates a user and returns JWT tokens.
 func (s *authService) Login(ctx context.Context, loginReq models.LoginRequest) (*models.TokenResponse, error) {
-	// Find the user by email
+	// Find the user by email.
 	user, err := s.userRepository.FindByEmail(ctx, loginReq.Email)
 	if err != nil {
 		return nil, apperror.NewNotFoundError("User not found")
 	}
 
-	// Verify password
+	// Verify password.
 	if err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(loginReq.Password)); err != nil {
 		return nil, apperror.NewUnauthorizedError("Invalid credentials")
 	}
 
-	// Generate tokens
+	// Generate tokens.
 	tokens, err := s.jwtService.GenerateTokens(user.ID.Hex(), user.Email)
 	if err != nil {
 		return nil, apperror.NewInternalError(err)
@@ -52,15 +52,15 @@ func (s *authService) Login(ctx context.Context, loginReq models.LoginRequest) (
 	return tokens, nil
 }
 
-// RefreshToken validates a refresh token and issues new tokens
+// RefreshToken validates a refresh token and issues new tokens.
 func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*models.TokenResponse, error) {
-	// First, validate the refresh token
+	// Validate the refresh token.
 	claims, err := s.jwtService.ValidateToken(refreshToken, models.RefreshToken)
 	if err != nil {
 		return nil, apperror.NewUnauthorizedError("Invalid refresh token")
 	}
 
-	// Check if the user still exists
+	// Check if the user still exists.
 	userID, err := bson.ObjectIDFromHex(claims.UserID)
 	if err != nil {
 		return nil, apperror.NewUnauthorizedError("Invalid user ID in token")
@@ -71,7 +71,7 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 		return nil, apperror.NewUnauthorizedError("User no longer exists")
 	}
 
-	// Generate new tokens
+	// Generate new tokens.
 	tokens, err := s.jwtService.GenerateTokens(user.ID.Hex(), user.Email)
 	if err != nil {
 		return nil, apperror.NewInternalError(fmt.Errorf("failed to generate tokens: %w", err))

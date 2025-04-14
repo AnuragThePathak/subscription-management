@@ -2,7 +2,6 @@ package middlewares
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -16,13 +15,11 @@ import (
 type contextKey string
 
 const (
-	// UserIDKey is the context key for the authenticated user ID
-	UserIDKey contextKey = "userID"
-	// UserEmailKey is the context key for the authenticated user email
-	UserEmailKey contextKey = "userEmail"
+	UserIDKey    contextKey = "userID"    // Context key for authenticated user ID.
+	UserEmailKey contextKey = "userEmail" // Context key for authenticated user email.
 )
 
-// Authentication returns middleware that validates JWT tokens
+// Authentication validates JWT tokens and adds user claims to the request context.
 func Authentication(jwtService services.JWTService) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -32,7 +29,6 @@ func Authentication(jwtService services.JWTService) func(next http.Handler) http
 				return
 			}
 
-			// Split "Bearer token"
 			parts := strings.SplitN(authHeader, " ", 2)
 			if len(parts) != 2 || parts[0] != "Bearer" {
 				endpoint.WriteAPIResponse(w, http.StatusUnauthorized, map[string]string{"error": "Invalid authorization format"})
@@ -40,24 +36,23 @@ func Authentication(jwtService services.JWTService) func(next http.Handler) http
 			}
 
 			tokenString := parts[1]
-			slog.Debug(fmt.Sprintf("Token: %s", tokenString))
 			claims, err := jwtService.ValidateToken(tokenString, models.AccessToken)
 			if err != nil {
+				slog.Warn("Invalid token", slog.String("error", err.Error()))
 				endpoint.WriteAPIResponse(w, http.StatusUnauthorized, map[string]string{"error": "Invalid token"})
 				return
 			}
 
-			// Add user claims to context
+			// Add user claims to context.
 			ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
 			ctx = context.WithValue(ctx, UserEmailKey, claims.Email)
 
-			// Call the next handler with the updated context
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
 
-// GetUserID retrieves the authenticated user ID from context
+// GetUserID retrieves the authenticated user ID from the context.
 func GetUserID(ctx context.Context) (string, error) {
 	id, ok := ctx.Value(UserIDKey).(string)
 	if !ok {
@@ -66,7 +61,7 @@ func GetUserID(ctx context.Context) (string, error) {
 	return id, nil
 }
 
-// GetUserEmail retrieves the authenticated user email from context
+// GetUserEmail retrieves the authenticated user email from the context.
 func GetUserEmail(ctx context.Context) (string, error) {
 	email, ok := ctx.Value(UserEmailKey).(string)
 	if !ok {
@@ -75,21 +70,11 @@ func GetUserEmail(ctx context.Context) (string, error) {
 	return email, nil
 }
 
-// RequireRole checks if a user has a specific role
-// This is a placeholder for role-based authorization
-// You would need to implement user roles in your User model first
+// RequireRole is a placeholder for role-based authorization.
 func RequireRole(role string) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Example implementation - modify based on your role structure
-			// userID, err := GetUserID(r.Context())
-			// if err != nil {
-			//     endpoint.WriteAPIResponse(w, http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
-			//     return
-			// }
-
-			// Here you would check the user's role from the database
-			// For now, we'll just continue to the next handler
+			// Example implementation for role-based checks.
 			next.ServeHTTP(w, r)
 		})
 	}

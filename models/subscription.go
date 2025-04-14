@@ -9,7 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
-// Currency represents valid currency types
+// Currency represents valid currency types.
 type Currency string
 
 const (
@@ -18,7 +18,7 @@ const (
 	GBP Currency = "GBP"
 )
 
-// Frequency represents subscription billing frequency
+// Frequency represents subscription billing frequency.
 type Frequency string
 
 const (
@@ -28,7 +28,7 @@ const (
 	Yearly  Frequency = "yearly"
 )
 
-// Category represents subscription categories
+// Category represents subscription categories.
 type Category string
 
 const (
@@ -42,7 +42,7 @@ const (
 	Other         Category = "other"
 )
 
-// Status represents subscription status
+// Status represents subscription status.
 type Status string
 
 const (
@@ -51,7 +51,7 @@ const (
 	Expired   Status = "expired"
 )
 
-// Subscription represents a subscription in the database
+// Subscription represents a subscription in the database.
 type Subscription struct {
 	ID            bson.ObjectID `bson:"_id,omitempty"`
 	Name          string        `bson:"name"`
@@ -68,92 +68,49 @@ type Subscription struct {
 	UpdatedAt     time.Time     `bson:"updatedAt"`
 }
 
-// Modified Validate to handle the automatically set renewal date
+// Validate validates the subscription fields.
 func (s *Subscription) Validate() error {
-	// Name validation
-	if s.Name == "" {
-		return apperror.NewValidationError("subscription name is required")
-	}
-	nameLength := len(s.Name)
-	if nameLength < 2 || nameLength > 100 {
+	if s.Name == "" || len(s.Name) < 2 || len(s.Name) > 100 {
 		return apperror.NewValidationError("name must be between 2 and 100 characters")
 	}
-
-	// Price validation
 	if s.Price <= 0 {
 		return apperror.NewValidationError("price must be greater than 0")
 	}
-
-	// Currency validation
-	switch s.Currency {
-	case USD, EUR, GBP:
-		// Valid
-	default:
+	if s.Currency != USD && s.Currency != EUR && s.Currency != GBP {
 		return apperror.NewValidationError("invalid currency")
 	}
-
-	// Frequency validation
-	switch s.Frequency {
-	case Daily, Weekly, Monthly, Yearly:
-		// Valid
-	default:
+	if s.Frequency != Daily && s.Frequency != Weekly && s.Frequency != Monthly && s.Frequency != Yearly {
 		return apperror.NewValidationError("invalid frequency")
 	}
-
-	// Category validation
-	switch s.Category {
-	case Sports, News, Entertainment, Lifestyle, Technology, Finance, Politics, Other:
-		// Valid
-	default:
+	if s.Category != Sports && s.Category != News && s.Category != Entertainment &&
+		s.Category != Lifestyle && s.Category != Technology && s.Category != Finance &&
+		s.Category != Politics && s.Category != Other {
 		return apperror.NewValidationError("invalid category")
 	}
-
-	// PaymentMethod validation
 	if s.PaymentMethod == "" {
 		return apperror.NewValidationError("payment method is required")
 	}
-
-	// Status validation
-	switch s.Status {
-	case Active, Cancelled, Expired:
-		// Valid
-	default:
+	if s.Status != Active && s.Status != Cancelled && s.Status != Expired {
 		return apperror.NewValidationError("invalid status")
 	}
-
-	// StartDate validation
-	if s.StartDate.IsZero() {
-		return apperror.NewValidationError("start date is required")
-	}
-	if s.StartDate.After(time.Now()) {
+	if s.StartDate.IsZero() || s.StartDate.After(time.Now()) {
 		return apperror.NewValidationError("start date must be in the past")
 	}
-
-	// RenewalDate validation
-	if s.RenewalDate.IsZero() {
-		return apperror.NewValidationError("renewal date is required")
-	}
-	
-	// Note: We don't check if renewal date is after start date if it's already expired,
-	// since we may have automatically set status to expired
-	if s.Status != Expired && !s.RenewalDate.After(s.StartDate) {
+	if s.RenewalDate.IsZero() || (s.Status != Expired && !s.RenewalDate.After(s.StartDate)) {
 		return apperror.NewValidationError("renewal date must be after the start date")
 	}
-
-	// UserID validation
 	if s.UserID.IsZero() {
 		return apperror.NewValidationError("user ID is required")
 	}
-
 	return nil
 }
 
-// SubscriptionCollection handles database operations for subscriptions
+// SubscriptionCollection handles database operations for subscriptions.
 type SubscriptionCollection struct {
 	collection *mongo.Collection
 }
 
-// Update updates an existing subscription
+// Update updates an existing subscription.
 func (sc *SubscriptionCollection) Update(ctx context.Context, subscription *Subscription) error {
 	// Pre-save logic to set renewal date if not provided
 	if subscription.RenewalDate.IsZero() {
@@ -163,19 +120,19 @@ func (sc *SubscriptionCollection) Update(ctx context.Context, subscription *Subs
 			Monthly: 30,
 			Yearly:  365,
 		}
-		
+
 		// Get days to add based on frequency
 		daysToAdd := renewalPeriods[subscription.Frequency]
-		
+
 		// Set renewal date based on start date and frequency
 		subscription.RenewalDate = subscription.StartDate.AddDate(0, 0, daysToAdd)
 	}
-	
+
 	// Check if subscription is already expired
 	if subscription.RenewalDate.Before(time.Now()) {
 		subscription.Status = Expired
 	}
-	
+
 	// Validate subscription
 	if err := subscription.Validate(); err != nil {
 		return err
@@ -191,7 +148,7 @@ func (sc *SubscriptionCollection) Update(ctx context.Context, subscription *Subs
 	return err
 }
 
-// SubscriptionRequest represents the data structure for subscription API requests
+// SubscriptionRequest represents the data structure for subscription API requests.
 type SubscriptionRequest struct {
 	Name          string    `json:"name" validate:"required,min=2,max=100"`
 	Price         float64   `json:"price" validate:"required,gt=0"`
@@ -203,7 +160,7 @@ type SubscriptionRequest struct {
 	RenewalDate   time.Time `json:"renewalDate"`
 }
 
-// ToSubscription converts a request to a Subscription model
+// ToSubscription converts a request to a Subscription model.
 func (r *SubscriptionRequest) ToModel() *Subscription {
 	return &Subscription{
 		Name:          r.Name,
@@ -218,7 +175,7 @@ func (r *SubscriptionRequest) ToModel() *Subscription {
 	}
 }
 
-// SubscriptionResponse represents the data structure for subscription API responses
+// SubscriptionResponse represents the data structure for subscription API responses.
 type SubscriptionResponse struct {
 	ID            string    `json:"id"`
 	Name          string    `json:"name"`
@@ -235,7 +192,7 @@ type SubscriptionResponse struct {
 	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
-// ToResponse converts a Subscription model to a SubscriptionResponse
+// ToResponse converts a Subscription model to a SubscriptionResponse.
 func (s *Subscription) ToResponse() *SubscriptionResponse {
 	return &SubscriptionResponse{
 		ID:            s.ID.Hex(),

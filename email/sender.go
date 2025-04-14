@@ -9,7 +9,7 @@ import (
 	"gopkg.in/gomail.v2"
 )
 
-// EmailConfig holds email configuration
+// EmailConfig holds email configuration.
 type EmailConfig struct {
 	SMTPHost     string `mapstructure:"smtp_host"`
 	SMTPPort     int    `mapstructure:"smtp_port"`
@@ -21,13 +21,13 @@ type EmailConfig struct {
 	SupportURL   string `mapstructure:"support_url"`
 }
 
-// EmailSender handles email sending operations
+// EmailSender handles email sending operations.
 type EmailSender struct {
 	config EmailConfig
 	dialer *gomail.Dialer
 }
 
-// NewEmailSender creates a new email service
+// NewEmailSender creates a new email service.
 func NewEmailSender(config EmailConfig) *EmailSender {
 	dialer := gomail.NewDialer(
 		config.SMTPHost,
@@ -42,34 +42,34 @@ func NewEmailSender(config EmailConfig) *EmailSender {
 	}
 }
 
-// SendReminderEmail sends a subscription reminder email
+// SendReminderEmail sends a subscription reminder email.
 func (es *EmailSender) SendReminderEmail(ctx context.Context, toEmail string, userName string, subscription *models.Subscription, daysBefore int) error {
-	// Check context to allow for cancellation
+	// Check context to allow for cancellation.
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
-	// Find appropriate template
+	// Find appropriate template.
 	templateType, found := FindTemplateByDays(daysBefore)
 	if !found {
 		return fmt.Errorf("no template found for %d days before reminder", daysBefore)
 	}
 
-	// Get the template
+	// Get the template.
 	templates := GetTemplates()
 	template, exists := templates[templateType]
 	if !exists {
 		return fmt.Errorf("template not found: %s", templateType)
 	}
 
-	// Format price string
+	// Format price string.
 	priceStr := fmt.Sprintf("%s %.2f (%s)",
 		subscription.Currency,
 		subscription.Price,
 		subscription.Frequency,
 	)
 
-	// Create template data
+	// Create template data.
 	data := TemplateData{
 		UserName:         userName,
 		SubscriptionName: subscription.Name,
@@ -82,23 +82,23 @@ func (es *EmailSender) SendReminderEmail(ctx context.Context, toEmail string, us
 		DaysLeft:         daysBefore,
 	}
 
-	// Generate email content
+	// Generate email content.
 	subject := template.GenerateSubject(data)
 	htmlBody := template.GenerateBody(data)
 
-	// Create email message
+	// Create email message.
 	message := gomail.NewMessage()
 	message.SetHeader("From", fmt.Sprintf("%s <%s>", es.config.FromName, es.config.FromEmail))
 	message.SetHeader("To", toEmail)
 	message.SetHeader("Subject", subject)
 	message.SetBody("text/html", htmlBody)
 
-	// Send the email
+	// Send the email.
 	if err := es.dialer.DialAndSend(message); err != nil {
 		return fmt.Errorf("failed to send email: %w", err)
 	}
 
-	// Log the successful email sending
+	// Log the successful email sending.
 	slog.Info("Reminder email sent successfully",
 		slog.String("component", "email_service"),
 		slog.String("to", toEmail),
@@ -109,8 +109,8 @@ func (es *EmailSender) SendReminderEmail(ctx context.Context, toEmail string, us
 	return nil
 }
 
-// Close cleans up resources if needed
+// Close cleans up resources if needed.
 func (es *EmailSender) Close() error {
-	// Nothing to clean up with gomail
+	// Nothing to clean up with gomail.
 	return nil
 }

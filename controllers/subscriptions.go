@@ -36,8 +36,7 @@ func (c *subscriptionController) createSubscription(w http.ResponseWriter, r *ht
 	subscription := models.SubscriptionRequest{}
 	userID, _ := middlewares.GetUserID(r.Context())
 
-	endpoint.ServeRequest(
-		endpoint.InternalRequest{
+	endpoint.ServeRequest(endpoint.InternalRequest{
 			W:          w,
 			R:          r,
 			ReqBodyObj: &subscription,
@@ -45,36 +44,31 @@ func (c *subscriptionController) createSubscription(w http.ResponseWriter, r *ht
 				return endpoint.ToResponse(c.subscriptionService.CreateSubscription(r.Context(), subscription.ToModel(), userID))
 			},
 			SuccessCode: http.StatusCreated,
-		},
-	)
+	})
 }
 
 func (c *subscriptionController) getAllSubscriptions(w http.ResponseWriter, r *http.Request) {
-	endpoint.ServeRequest(
-		endpoint.InternalRequest{
+	endpoint.ServeRequest(endpoint.InternalRequest{
 			W: w,
 			R: r,
 			EndpointLogic: func() (any, error) {
 				return endpoint.ToResponseSlice(c.subscriptionService.GetAllSubscriptions(r.Context()))
 			},
 			SuccessCode: http.StatusOK,
-		},
-	)
+	})
 }
 
 func (c *subscriptionController) getSubscriptionByID(w http.ResponseWriter, r *http.Request) {
 	subscriptionID := chi.URLParam(r, "id")
 
-	endpoint.ServeRequest(
-		endpoint.InternalRequest{
+	endpoint.ServeRequest(endpoint.InternalRequest{
 			W: w,
 			R: r,
 			EndpointLogic: func() (any, error) {
 				return endpoint.ToResponse(c.subscriptionService.GetSubscriptionByID(r.Context(), subscriptionID))
 			},
 			SuccessCode: http.StatusOK,
-		},
-	)
+	})
 }
 
 func (c *subscriptionController) updateSubscription(w http.ResponseWriter, r *http.Request) {
@@ -89,16 +83,14 @@ func (c *subscriptionController) getSubscriptionsByUserID(w http.ResponseWriter,
 	userID := chi.URLParam(r, "id")
 	claimedUserID, _ := middlewares.GetUserID(r.Context())
 
-	endpoint.ServeRequest(
-		endpoint.InternalRequest{
+	endpoint.ServeRequest(endpoint.InternalRequest{
 			W: w,
 			R: r,
 			EndpointLogic: func() (any, error) {
 				return endpoint.ToResponseSlice(c.subscriptionService.GetSubscriptionsByUserID(r.Context(), userID, claimedUserID))
 			},
 			SuccessCode: http.StatusOK,
-		},
-	)
+	})
 }
 
 func (c *subscriptionController) cancelSubscription(w http.ResponseWriter, r *http.Request) {

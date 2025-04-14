@@ -2,7 +2,7 @@ package apperror
 
 import "net/http"
 
-// Generic
+// Generic errors.
 func NewInternalError(err error) AppError {
 	return &appError{
 		code:    ErrInternal,
@@ -21,7 +21,7 @@ func NewTimeoutError(err error) AppError {
 	}
 }
 
-// Auth
+// Authentication errors.
 func NewUnauthorizedError(msg string) AppError {
 	return &appError{
 		code:    ErrUnauthorized,
@@ -38,7 +38,7 @@ func NewForbiddenError(msg string) AppError {
 	}
 }
 
-// Validation
+// Validation errors.
 func NewValidationError(msg string) AppError {
 	return &appError{
 		code:    ErrValidation,
@@ -55,7 +55,7 @@ func NewUnprocessableEntity(msg string) AppError {
 	}
 }
 
-// DB & CRUD
+// Database and CRUD errors.
 func NewNotFoundError(msg string) AppError {
 	return &appError{
 		code:    ErrNotFound,
@@ -89,7 +89,7 @@ func NewDBError(err error) AppError {
 	}
 }
 
-// Rate limit / throttling
+// Rate limit errors.
 func NewRateLimitError(msg string) AppError {
 	return &appError{
 		code:    ErrRateLimited,

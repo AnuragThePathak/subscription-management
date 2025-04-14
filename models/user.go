@@ -6,7 +6,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
-// User is your database model
+// User represents the database model for a user.
 type User struct {
 	ID        bson.ObjectID `bson:"_id,omitempty"`
 	Name      string        `bson:"name"`
@@ -16,23 +16,23 @@ type User struct {
 	UpdatedAt time.Time     `bson:"updatedAt"`
 }
 
-// UserRequest represents the data structure for user registration API requests
+// UserRequest represents the data structure for user registration API requests.
 type UserRequest struct {
 	Name     string `json:"name" validate:"required"`
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required,min=8"`
 }
 
-// ToUser converts a signup request to a User model
+// ToModel converts a UserRequest to a User model.
 func (r *UserRequest) ToModel() *User {
 	return &User{
 		Name:     r.Name,
 		Email:    r.Email,
-		Password: r.Password, // Will be hashed before storing
+		Password: r.Password, // Will be hashed before storing.
 	}
 }
 
-// UserResponse represents the data structure returned to clients
+// UserResponse represents the data structure returned to clients.
 type UserResponse struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
@@ -40,7 +40,7 @@ type UserResponse struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
-// ToResponse converts a User model to a UserResponse
+// ToResponse converts a User model to a UserResponse.
 func (u *User) ToResponse() *UserResponse {
 	return &UserResponse{
 		ID:        u.ID.Hex(),

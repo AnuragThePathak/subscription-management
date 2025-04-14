@@ -5,24 +5,24 @@ import (
 	"time"
 )
 
-// TemplateType represents different email template types
+// TemplateType represents different email template types.
 type TemplateType string
 
 const (
 	SevenDaysReminder TemplateType = "7 days before reminder"
 	FiveDaysReminder  TemplateType = "5 days before reminder"
 	TwoDaysReminder   TemplateType = "2 days before reminder"
-	OneDayReminder    TemplateType = "1 days before reminder"
+	OneDayReminder    TemplateType = "1 day before reminder"
 )
 
-// EmailTemplate represents an email template with subject and body generators
+// EmailTemplate represents an email template with subject and body generators.
 type EmailTemplate struct {
 	Label           string
 	GenerateSubject func(TemplateData) string
 	GenerateBody    func(TemplateData) string
 }
 
-// TemplateData contains all data needed for email templates
+// TemplateData contains all data needed for email templates.
 type TemplateData struct {
 	UserName         string
 	SubscriptionName string
@@ -35,7 +35,7 @@ type TemplateData struct {
 	DaysLeft         int
 }
 
-// GetTemplates returns all available email templates
+// GetTemplates returns all available email templates.
 func GetTemplates() map[TemplateType]EmailTemplate {
 	return map[TemplateType]EmailTemplate{
 		SevenDaysReminder: {
@@ -66,7 +66,7 @@ func GetTemplates() map[TemplateType]EmailTemplate {
 			},
 		},
 		OneDayReminder: {
-			Label: "1 days before reminder",
+			Label: "1 day before reminder",
 			GenerateSubject: func(data TemplateData) string {
 				return fmt.Sprintf("⚡ Final Reminder: %s Renews Tomorrow!", data.SubscriptionName)
 			},
@@ -77,14 +77,14 @@ func GetTemplates() map[TemplateType]EmailTemplate {
 	}
 }
 
-// FindTemplateByDays returns the appropriate template based on days before renewal
+// FindTemplateByDays returns the appropriate template based on days before renewal.
 func FindTemplateByDays(daysBefore int) (TemplateType, bool) {
 	switch daysBefore {
 	case 7:
 		return SevenDaysReminder, true
 	case 5:
 		return FiveDaysReminder, true
-	case 3:
+	case 2:
 		return TwoDaysReminder, true
 	case 1:
 		return OneDayReminder, true
@@ -93,12 +93,12 @@ func FindTemplateByDays(daysBefore int) (TemplateType, bool) {
 	}
 }
 
-// FormatTime formats time.Time into a readable date string
+// FormatTime formats time.Time into a readable date string.
 func FormatTime(t time.Time) string {
 	return t.Format("Jan 2, 2006")
 }
 
-// generateEmailTemplate creates HTML email content based on template data
+// generateEmailTemplate creates HTML email content based on template data.
 func generateEmailTemplate(data TemplateData) string {
 	return fmt.Sprintf(`
 <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 0; background-color: #f4f7fa;">
@@ -111,9 +111,7 @@ func generateEmailTemplate(data TemplateData) string {
         <tr>
             <td style="padding: 40px 30px;">                
                 <p style="font-size: 16px; margin-bottom: 25px;">Hello <strong style="color: #4a90e2;">%s</strong>,</p>
-                
                 <p style="font-size: 16px; margin-bottom: 25px;">Your <strong>%s</strong> subscription is set to renew on <strong style="color: #4a90e2;">%s</strong> (%d days from today).</p>
-                
                 <table cellpadding="15" cellspacing="0" border="0" width="100%%" style="background-color: #f0f7ff; border-radius: 10px; margin-bottom: 25px;">
                     <tr>
                         <td style="font-size: 16px; border-bottom: 1px solid #d0e3ff;">
@@ -131,11 +129,8 @@ func generateEmailTemplate(data TemplateData) string {
                         </td>
                     </tr>
                 </table>
-                
                 <p style="font-size: 16px; margin-bottom: 25px;">If you'd like to make changes or cancel your subscription, please visit your <a href="%s" style="color: #4a90e2; text-decoration: none;">account settings</a> before the renewal date.</p>
-                
                 <p style="font-size: 16px; margin-top: 30px;">Need help? <a href="%s" style="color: #4a90e2; text-decoration: none;">Contact our support team</a> anytime.</p>
-                
                 <p style="font-size: 16px; margin-top: 30px;">
                     Best regards,<br>
                     <strong>The SubDub Team</strong>

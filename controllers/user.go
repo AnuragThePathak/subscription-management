@@ -4,22 +4,18 @@ import (
 	"net/http"
 
 	"github.com/anuragthepathak/subscription-management/endpoint"
+	"github.com/anuragthepathak/subscription-management/models"
 	"github.com/anuragthepathak/subscription-management/services"
 	"github.com/go-chi/chi/v5"
 )
 
 type userController struct {
-	// Add any necessary dependencies here, such as a service or repository
 	userService services.UserService
 }
 
 func NewUserController(userService services.UserService) http.Handler {
-	// Initialize the userController with any necessary dependencies
-	c := &userController{
-		userService,
-	}
+	c := &userController{userService}
 
-	// Create a new router and define the routes
 	r := chi.NewRouter()
 	r.Get("/", c.getAllUsers)
 	r.Get("/{id}", c.getUserByID)
@@ -29,16 +25,14 @@ func NewUserController(userService services.UserService) http.Handler {
 }
 
 func (c *userController) getAllUsers(w http.ResponseWriter, r *http.Request) {
-	endpoint.ServeRequest(
-		endpoint.InternalRequest{
+	endpoint.ServeRequest(endpoint.InternalRequest{
 			W: w,
 			R: r,
 			EndpointLogic: func() (any, error) {
 				return endpoint.ToResponseSlice(c.userService.GetAllUsers(r.Context()))
 			},
 			SuccessCode: http.StatusOK,
-		},
-	)
+	})
 }
 
 func (c *userController) getUserByID(w http.ResponseWriter, r *http.Request) {
@@ -49,9 +43,6 @@ func (c *userController) getUserByID(w http.ResponseWriter, r *http.Request) {
 		R:          r,
 		ReqBodyObj: nil,
 		EndpointLogic: func() (any, error) {
-			// Convert the internal user model to a response model using the helper.
-			// If c.userService.GetUserByID returns (*models.User, error),
-			// then ToResponse converts it to (*models.UserResponse, error).
 			return endpoint.ToResponse(c.userService.GetUserByID(r.Context(), id))
 		},
 		SuccessCode: http.StatusOK,

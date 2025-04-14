@@ -82,7 +82,7 @@ func (s *subscriptionService) GetAllSubscriptions(ctx context.Context) ([]*model
 func (s *subscriptionService) GetSubscriptionByID(ctx context.Context, id string) (*models.Subscription, error) {
 	subscriptionID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
-		return nil, apperror.NewBadRequestError("Invalid user ID")
+		return nil, apperror.NewBadRequestError("Invalid subscription ID")
 	}
 	return s.subscriptionRepository.GetByID(ctx, subscriptionID)
 }

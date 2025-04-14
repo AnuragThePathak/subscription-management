@@ -2,34 +2,36 @@ package wrappers
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/anuragthepathak/subscription-management/queue"
 )
 
+// QueueWorker wraps the ReminderWorker to provide graceful shutdown capabilities.
 type QueueWorker struct {
 	Worker *queue.ReminderWorker
 }
 
+// Shutdown gracefully shuts down the worker, respecting the provided context.
 func (w *QueueWorker) Shutdown(ctx context.Context) error {
-	// Check if context is already done before we even start
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	
+
 	closeChan := make(chan error, 1)
 
 	go func() {
+		slog.Info("Stopping queue worker", slog.String("component", "queue_worker"))
 		w.Worker.Stop()
 		close(closeChan)
 	}()
 
-	// Wait for either Close() to complete or context to expire
 	select {
 	case <-closeChan:
+		slog.Info("Queue worker stopped successfully", slog.String("component", "queue_worker"))
 		return nil
 	case <-ctx.Done():
-		// Context expired, but we can't really abort Close() once started
-		// Let the goroutine complete in the background
+		slog.Warn("Context expired while stopping queue worker", slog.String("component", "queue_worker"))
 		return ctx.Err()
 	}
 }

@@ -6,7 +6,7 @@ import (
 	"github.com/anuragthepathak/subscription-management/email"
 )
 
-// Server configuration
+// ServerConfig holds the server configuration, including TLS settings.
 type ServerConfig struct {
 	Port int `mapstructure:"port"`
 	TLS  struct {
@@ -16,13 +16,13 @@ type ServerConfig struct {
 	} `mapstructure:"tls"`
 }
 
-// Database configuration
+// DatabaseConfig holds the MongoDB connection details.
 type DatabaseConfig struct {
 	URL  string `mapstructure:"url"`
 	Name string `mapstructure:"name"`
 }
 
-// JWT configuration
+// JWTConfig holds the JWT token generation and validation settings.
 type JWTConfig struct {
 	AccessSecret       string `mapstructure:"access_secret"`
 	RefreshSecret      string `mapstructure:"refresh_secret"`
@@ -31,46 +31,46 @@ type JWTConfig struct {
 	Issuer             string `mapstructure:"issuer"`
 }
 
-// Rate limiter configuration
+// RateLimiterConfig defines the rate limiting settings.
 type RateLimiterConfig struct {
-	Rate   int           `mapstructure:"rate"`
-	Burst  int           `mapstructure:"burst"`
-	Period time.Duration `mapstructure:"period"`
+	Rate   int           `mapstructure:"rate"`   // Maximum requests per period.
+	Burst  int           `mapstructure:"burst"`  // Maximum burst capacity.
+	Period time.Duration `mapstructure:"period"` // Time period for rate limiting.
 }
 
-// Redis configuration
+// RedisConfig holds the Redis connection details.
 type RedisConfig struct {
 	URL      string `mapstructure:"url"`
 	Password string `mapstructure:"password"`
 	DB       int    `mapstructure:"db"`
 }
 
-// SchedulerConfig represents the configuration for the scheduler
+// SchedulerConfig holds the configuration for the subscription scheduler.
 type SchedulerConfig struct {
-	Interval      time.Duration `mapstructure:"interval"`
-	ReminderDays  []int         `mapstructure:"reminder_days"`
-	EnabledForEnv []string      `mapstructure:"enabled_for_env"`
+	Interval      time.Duration `mapstructure:"interval"`        // Polling interval for reminders.
+	ReminderDays  []int         `mapstructure:"reminder_days"`   // Days before renewal to send reminders.
+	EnabledForEnv []string      `mapstructure:"enabled_for_env"` // Environments where the scheduler is enabled.
 }
 
-// WorkerConfig represents the configuration for the worker
+// QueueWorkerConfig holds the configuration for the queue worker.
 type QueueWorkerConfig struct {
-	Concurrency   int      `mapstructure:"concurrency"`
-	QueueName     string   `mapstructure:"queue_name"`
-	EnabledForEnv []string `mapstructure:"enabled_for_env"`
+	Concurrency   int      `mapstructure:"concurrency"`     // Number of concurrent workers.
+	QueueName     string   `mapstructure:"queue_name"`      // Name of the queue to process.
+	EnabledForEnv []string `mapstructure:"enabled_for_env"` // Environments where the worker is enabled.
 }
 
-// Complete application configuration
+// Config holds the complete application configuration.
 type Config struct {
 	Server      ServerConfig      `mapstructure:"server"`
 	Database    DatabaseConfig    `mapstructure:"database"`
 	JWT         JWTConfig         `mapstructure:"jwt"`
 	Redis       RedisConfig       `mapstructure:"redis"`
-	Env         string            `mapstructure:"env"`
+	Env         string            `mapstructure:"env"` // Current application environment (e.g., development, production).
 	Scheduler   SchedulerConfig   `mapstructure:"scheduler"`
 	QueueWorker QueueWorkerConfig `mapstructure:"queue_worker"`
 	Email       email.EmailConfig `mapstructure:"email"`
 
 	RateLimiter struct {
-		App RateLimiterConfig `mapstructure:"app"`
+		App RateLimiterConfig `mapstructure:"app"` // Application-level rate limiter settings.
 	} `mapstructure:"rate_limiter"`
 }

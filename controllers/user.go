@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/anuragthepathak/subscription-management/endpoint"
+	"github.com/anuragthepathak/subscription-management/middlewares"
 	"github.com/anuragthepathak/subscription-management/models"
 	"github.com/anuragthepathak/subscription-management/services"
 	"github.com/go-chi/chi/v5"
@@ -37,12 +38,13 @@ func (c *userController) getAllUsers(w http.ResponseWriter, r *http.Request) {
 
 func (c *userController) getUserByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	claimedUserID, _ := middlewares.GetUserID(r.Context())
 
 	endpoint.ServeRequest(endpoint.InternalRequest{
 		W: w,
 		R: r,
 		EndpointLogic: func() (any, error) {
-			return endpoint.ToResponse(c.userService.GetUserByID(r.Context(), id))
+			return endpoint.ToResponse(c.userService.GetUserByID(r.Context(), id, claimedUserID))
 		},
 		SuccessCode: http.StatusOK,
 	})
@@ -50,14 +52,15 @@ func (c *userController) getUserByID(w http.ResponseWriter, r *http.Request) {
 
 func (c *userController) updateUser(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	claimedUserID, _ := middlewares.GetUserID(r.Context())
 	updateReq := models.UserUpdateRequest{}
-	
+
 	endpoint.ServeRequest(endpoint.InternalRequest{
-		W: w,
-		R: r,
+		W:          w,
+		R:          r,
 		ReqBodyObj: &updateReq,
 		EndpointLogic: func() (any, error) {
-			return endpoint.ToResponse(c.userService.UpdateUser(r.Context(), id, &updateReq))
+			return endpoint.ToResponse(c.userService.UpdateUser(r.Context(), id, &updateReq, claimedUserID))
 		},
 		SuccessCode: http.StatusOK,
 	})
@@ -65,12 +68,13 @@ func (c *userController) updateUser(w http.ResponseWriter, r *http.Request) {
 
 func (c *userController) deleteUser(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	claimedUserID, _ := middlewares.GetUserID(r.Context())
 
 	endpoint.ServeRequest(endpoint.InternalRequest{
 		W: w,
 		R: r,
 		EndpointLogic: func() (any, error) {
-			return nil, c.userService.DeleteUser(r.Context(), id)
+			return nil, c.userService.DeleteUser(r.Context(), id, claimedUserID)
 		},
 		SuccessCode: http.StatusNoContent,
 	})

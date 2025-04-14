@@ -15,9 +15,9 @@ import (
 type UserService interface {
 	CreateUser(context.Context, *models.User) (*models.User, error)
 	GetAllUsers(context.Context) ([]*models.User, error)
-	GetUserByID(context.Context, string) (*models.User, error)
-	UpdateUser(context.Context, string, *models.UserUpdateRequest) (*models.User, error)
-	DeleteUser(context.Context, string) error
+	GetUserByID(context.Context, string, string) (*models.User, error)
+	UpdateUser(context.Context, string, *models.UserUpdateRequest, string) (*models.User, error)
+	DeleteUser(context.Context, string, string) error
 }
 
 type userService struct {
@@ -70,7 +70,10 @@ func (us *userService) GetAllUsers(ctx context.Context) ([]*models.User, error) 
 	return us.userRepository.GetAll(ctx)
 }
 
-func (us *userService) GetUserByID(ctx context.Context, id string) (*models.User, error) {
+func (us *userService) GetUserByID(ctx context.Context, id string, claimedUserID string) (*models.User, error) {
+	if id != claimedUserID {
+		return nil, apperror.NewForbiddenError("You can only view your own profile")
+	}
 	userID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return nil, apperror.NewBadRequestError("Invalid user ID")
@@ -79,7 +82,10 @@ func (us *userService) GetUserByID(ctx context.Context, id string) (*models.User
 	return us.userRepository.FindByID(ctx, userID)
 }
 
-func (us *userService) UpdateUser(ctx context.Context, id string, updateReq *models.UserUpdateRequest) (*models.User, error) {
+func (us *userService) UpdateUser(ctx context.Context, id string, updateReq *models.UserUpdateRequest, claimedUserID string) (*models.User, error) {
+	if id != claimedUserID {
+		return nil, apperror.NewForbiddenError("You can only update your own profile")
+	}
 	// Convert ID string to ObjectID
 	userID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
@@ -141,7 +147,10 @@ func (us *userService) UpdateUser(ctx context.Context, id string, updateReq *mod
 	return us.userRepository.Update(ctx, existingUser)
 }
 
-func (us *userService) DeleteUser(ctx context.Context, id string) error {
+func (us *userService) DeleteUser(ctx context.Context, id string, claimedUserID string) error {
+	if id != claimedUserID {
+		return apperror.NewForbiddenError("You can only delete your own profile")
+	}
 	userID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return apperror.NewBadRequestError("Invalid user ID")

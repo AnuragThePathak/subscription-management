@@ -14,12 +14,11 @@ import (
 
 type UserRepository interface {
 	Create(context.Context, *models.User) (*models.User, error)
-
 	FindByEmail(context.Context, string) (*models.User, error)
-
 	FindByID(context.Context, bson.ObjectID) (*models.User, error)
-
 	GetAll(context.Context) ([]*models.User, error)
+	Update(ctx context.Context, user *models.User) (*models.User, error)
+	Delete(ctx context.Context, id bson.ObjectID) error
 }
 
 type userRepository struct {
@@ -102,4 +101,36 @@ func (uc *userRepository) GetAll(ctx context.Context) ([]*models.User, error) {
 	}
 
 	return users, nil
+}
+
+func (uc *userRepository) Update(ctx context.Context, user *models.User) (*models.User, error) {
+	filter := bson.M{"_id": user.ID}
+	update := bson.M{"$set": user}
+	
+	result, err := uc.collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return nil, apperror.NewConflictError("Email already exists")
+		}
+		return nil, apperror.NewDBError(err)
+	}
+	
+	if result.MatchedCount == 0 {
+		return nil, apperror.NewNotFoundError("User not found")
+	}
+	
+	return user, nil
+}
+
+func (uc *userRepository) Delete(ctx context.Context, id bson.ObjectID) error {
+	result, err := uc.collection.DeleteOne(ctx, bson.M{"_id": id})
+	if err != nil {
+		return apperror.NewDBError(err)
+	}
+	
+	if result.DeletedCount == 0 {
+		return apperror.NewNotFoundError("User not found")
+	}
+	
+	return nil
 }

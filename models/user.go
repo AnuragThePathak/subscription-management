@@ -50,23 +50,10 @@ func (u *User) ToResponse() *UserResponse {
 	}
 }
 
-// // Update updates a user's information
-// func (uc *UserCollection) Update(ctx context.Context, user *User) error {
-// 	// If the password was changed, hash it
-// 	if user.Password != "" {
-// 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), 10)
-// 		if err != nil {
-// 			return err
-// 		}
-// 		user.Password = string(hashedPassword)
-// 	}
-
-// 	// Update timestamp
-// 	user.UpdatedAt = time.Now()
-
-// 	// Update the user in the database
-// 	filter := bson.M{"_id": user.ID}
-// 	update := bson.M{"$set": user}
-// 	_, err := uc.collection.UpdateOne(ctx, filter, update)
-// 	return err
-// }
+// UserUpdateRequest represents the data structure for user update API requests.
+type UserUpdateRequest struct {
+	Name            string `json:"name,omitempty"`
+	Email           string `json:"email,omitempty" validate:"omitempty,email"`
+	CurrentPassword string `json:"currentPassword,omitempty"`
+	NewPassword     string `json:"newPassword,omitempty" validate:"omitempty,min=8"`
+}

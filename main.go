@@ -141,7 +141,7 @@ func main() {
 	}
 
 	appRateLimiterService := services.NewRateLimiterService(redisRateLimiter, config.NewRateLimit(&cf.RateLimiter.App), "app")
-	userService := services.NewUserService(userRepository)
+	userService := services.NewUserService(userRepository, subscriptionRepository)
 	jwtService := services.NewJWTService(cf.JWT)
 	authService := services.NewAuthService(userRepository, jwtService)
 	subscriptionService := services.NewSubscriptionService(subscriptionRepository)

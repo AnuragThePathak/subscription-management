@@ -22,12 +22,14 @@ type UserService interface {
 
 type userService struct {
 	userRepository repositories.UserRepository
+	subscriptionRepository repositories.SubscriptionRepository
 }
 
 // NewUserService creates a new instance of UserService.
-func NewUserService(userRepository repositories.UserRepository) UserService {
+func NewUserService(userRepository repositories.UserRepository, subscriptionRepository repositories.SubscriptionRepository) UserService {
 	return &userService{
 		userRepository,
+		subscriptionRepository,
 	}
 }
 
@@ -162,5 +164,15 @@ func (us *userService) DeleteUser(ctx context.Context, id string, claimedUserID 
 		return err
 	}
 
+	// Check if user has any subscriptions
+	subscriptions, err := us.subscriptionRepository.GetByUserID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if len(subscriptions) > 0 {
+		return apperror.NewConflictError("User has active subscriptions and cannot be deleted")
+	}
+
+	// Delete the user
 	return us.userRepository.Delete(ctx, userID)
 }

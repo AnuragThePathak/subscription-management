@@ -78,7 +78,7 @@ func (us *userService) GetUserByID(ctx context.Context, id string, claimedUserID
 	}
 	userID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
-		return nil, apperror.NewBadRequestError("Invalid user ID")
+		return nil, apperror.NewUnauthorizedError("Invalid user ID")
 	}
 
 	return us.userRepository.FindByID(ctx, userID)
@@ -91,7 +91,7 @@ func (us *userService) UpdateUser(ctx context.Context, id string, updateReq *mod
 	// Convert ID string to ObjectID
 	userID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
-		return nil, apperror.NewBadRequestError("Invalid user ID")
+		return nil, apperror.NewUnauthorizedError("Invalid user ID")
 	}
 
 	// Get the complete user record including password
@@ -155,7 +155,7 @@ func (us *userService) DeleteUser(ctx context.Context, id string, claimedUserID 
 	}
 	userID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
-		return apperror.NewBadRequestError("Invalid user ID")
+		return apperror.NewUnauthorizedError("Invalid user ID")
 	}
 
 	// Check if user exists before attempting to delete

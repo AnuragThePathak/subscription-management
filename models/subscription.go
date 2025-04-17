@@ -1,12 +1,10 @@
 package models
 
 import (
-	"context"
 	"time"
 
 	"github.com/anuragthepathak/subscription-management/apperror"
 	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 // Currency represents valid currency types.
@@ -105,49 +103,6 @@ func (s *Subscription) Validate() error {
 	return nil
 }
 
-// SubscriptionCollection handles database operations for subscriptions.
-type SubscriptionCollection struct {
-	collection *mongo.Collection
-}
-
-// Update updates an existing subscription.
-func (sc *SubscriptionCollection) Update(ctx context.Context, subscription *Subscription) error {
-	// Pre-save logic to set renewal date if not provided
-	if subscription.RenewalDate.IsZero() {
-		renewalPeriods := map[Frequency]int{
-			Daily:   1,
-			Weekly:  7,
-			Monthly: 30,
-			Yearly:  365,
-		}
-
-		// Get days to add based on frequency
-		daysToAdd := renewalPeriods[subscription.Frequency]
-
-		// Set renewal date based on start date and frequency
-		subscription.RenewalDate = subscription.StartDate.AddDate(0, 0, daysToAdd)
-	}
-
-	// Check if subscription is already expired
-	if subscription.RenewalDate.Before(time.Now()) {
-		subscription.Status = Expired
-	}
-
-	// Validate subscription
-	if err := subscription.Validate(); err != nil {
-		return err
-	}
-
-	// Update timestamp
-	subscription.UpdatedAt = time.Now()
-
-	// Update in database
-	filter := bson.M{"_id": subscription.ID}
-	update := bson.M{"$set": subscription}
-	_, err := sc.collection.UpdateOne(ctx, filter, update)
-	return err
-}
-
 // SubscriptionRequest represents the data structure for subscription API requests.
 type SubscriptionRequest struct {
 	Name          string    `json:"name" validate:"required,min=2,max=100"`
@@ -170,6 +125,32 @@ func (r *SubscriptionRequest) ToModel() *Subscription {
 		Category:      r.Category,
 		PaymentMethod: r.PaymentMethod,
 		Status:        Active,
+		StartDate:     r.StartDate,
+		RenewalDate:   r.RenewalDate,
+	}
+}
+
+// SubscriptionUpdateRequest represents the data structure for subscription update API requests.
+type SubscriptionUpdateRequest struct {
+	Name          string    `json:"name,omitempty" validate:"omitempty,min=2,max=100"`
+	Price         float64   `json:"price,omitempty" validate:"omitempty,gt=0"`
+	Currency      Currency  `json:"currency,omitempty"`
+	Frequency     Frequency `json:"frequency,omitempty"`
+	Category      Category  `json:"category,omitempty"`
+	PaymentMethod string    `json:"paymentMethod,omitempty"`
+	StartDate     time.Time `json:"startDate,omitzero"`
+	RenewalDate   time.Time `json:"renewalDate,omitzero"`
+}
+
+// ToModel converts an update request to a Subscription model.
+func (r *SubscriptionUpdateRequest) ToModel() *Subscription {
+	return &Subscription{
+		Name:          r.Name,
+		Price:         r.Price,
+		Currency:      r.Currency,
+		Frequency:     r.Frequency,
+		Category:      r.Category,
+		PaymentMethod: r.PaymentMethod,
 		StartDate:     r.StartDate,
 		RenewalDate:   r.RenewalDate,
 	}

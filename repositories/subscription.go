@@ -19,6 +19,8 @@ type SubscriptionRepository interface {
 	GetByUserID(context.Context, bson.ObjectID) ([]*models.Subscription, error)
 	GetActiveSubscriptions(context.Context) ([]*models.Subscription, error)
 	GetSubscriptionsDueForReminder(context.Context, []int) ([]*models.Subscription, error)
+	Update(ctx context.Context, subscription *models.Subscription) (*models.Subscription, error)
+	Delete(ctx context.Context, id bson.ObjectID) error
 }
 
 type subscriptionRepository struct {
@@ -109,9 +111,38 @@ func (r *subscriptionRepository) GetSubscriptionsDueForReminder(ctx context.Cont
 	return r.findSubscriptions(ctx, filter)
 }
 
-func (r *subscriptionRepository) findSubscription(ctx context.Context, filter bson.M, opts ...options.Lister[options.FindOneOptions]) (*models.Subscription, error) {
+func (r *subscriptionRepository) Update(ctx context.Context, subscription *models.Subscription) (*models.Subscription, error) {
+	filter := bson.M{"_id": subscription.ID}
+	update := bson.M{"$set": subscription}
+
+	res, err := r.collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return nil, apperror.NewDBError(err)
+	}
+	if res.MatchedCount == 0 {
+		return nil, apperror.NewNotFoundError("Subscription not found")
+	}
+
+	return subscription, nil
+}
+
+func (r *subscriptionRepository) Delete(ctx context.Context, id bson.ObjectID) error {
+	filter := bson.M{"_id": id}
+
+	res, err := r.collection.DeleteOne(ctx, filter)
+	if err != nil {
+		return apperror.NewDBError(err)
+	}
+	if res.DeletedCount == 0 {
+		return apperror.NewNotFoundError("Subscription not found")
+	}
+
+	return nil
+}
+
+func (r *subscriptionRepository) findSubscription(ctx context.Context, filter bson.M) (*models.Subscription, error) {
 	var subscription models.Subscription
-	err := r.collection.FindOne(ctx, filter, opts...).Decode(&subscription)
+	err := r.collection.FindOne(ctx, filter).Decode(&subscription)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, apperror.NewNotFoundError("Subscription not found")

@@ -11,8 +11,9 @@ type TemplateType string
 const (
 	SevenDaysReminder TemplateType = "7 days before reminder"
 	FiveDaysReminder  TemplateType = "5 days before reminder"
-	TwoDaysReminder   TemplateType = "2 days before reminder"
+	ThreeDaysReminder TemplateType = "3 days before reminder" // Changed from 2 to 3
 	OneDayReminder    TemplateType = "1 day before reminder"
+	CustomReminder    TemplateType = "custom days reminder"
 )
 
 // EmailTemplate represents an email template with subject and body generators.
@@ -41,7 +42,7 @@ func GetTemplates() map[TemplateType]EmailTemplate {
 		SevenDaysReminder: {
 			Label: "7 days before reminder",
 			GenerateSubject: func(data TemplateData) string {
-				return fmt.Sprintf("📅 Reminder: Your %s Subscription Renews in 7 Days!", data.SubscriptionName)
+				return fmt.Sprintf("📅 Reminder: Your %s Subscription Expires in 7 Days!", data.SubscriptionName)
 			},
 			GenerateBody: func(data TemplateData) string {
 				return generateEmailTemplate(data)
@@ -50,16 +51,16 @@ func GetTemplates() map[TemplateType]EmailTemplate {
 		FiveDaysReminder: {
 			Label: "5 days before reminder",
 			GenerateSubject: func(data TemplateData) string {
-				return fmt.Sprintf("⏳ %s Renews in 5 Days - Stay Subscribed!", data.SubscriptionName)
+				return fmt.Sprintf("⏳ %s Expires in 5 Days - Stay Subscribed!", data.SubscriptionName)
 			},
 			GenerateBody: func(data TemplateData) string {
 				return generateEmailTemplate(data)
 			},
 		},
-		TwoDaysReminder: {
-			Label: "2 days before reminder",
+		ThreeDaysReminder: { // Changed from TwoDaysReminder to ThreeDaysReminder
+			Label: "3 days before reminder", // Changed from 2 to 3
 			GenerateSubject: func(data TemplateData) string {
-				return fmt.Sprintf("🚀 2 Days Left! %s Subscription Renewal", data.SubscriptionName)
+				return fmt.Sprintf("🚀 3 Days Left! %s Subscription Expiry", data.SubscriptionName) // Changed from 2 to 3
 			},
 			GenerateBody: func(data TemplateData) string {
 				return generateEmailTemplate(data)
@@ -68,7 +69,24 @@ func GetTemplates() map[TemplateType]EmailTemplate {
 		OneDayReminder: {
 			Label: "1 day before reminder",
 			GenerateSubject: func(data TemplateData) string {
-				return fmt.Sprintf("⚡ Final Reminder: %s Renews Tomorrow!", data.SubscriptionName)
+				return fmt.Sprintf("⚡ Final Reminder: %s Expires Tomorrow!", data.SubscriptionName)
+			},
+			GenerateBody: func(data TemplateData) string {
+				return generateEmailTemplate(data)
+			},
+		},
+		CustomReminder: {
+			Label: "Custom days reminder",
+			GenerateSubject: func(data TemplateData) string {
+				if data.DaysLeft > 7 {
+					return fmt.Sprintf("📆 Your %s Subscription Expires in %d Days", data.SubscriptionName, data.DaysLeft)
+				} else if data.DaysLeft > 1 {
+					return fmt.Sprintf("🔔 %s Subscription Expires in %d Days!", data.SubscriptionName, data.DaysLeft)
+				} else if data.DaysLeft == 0 {
+					return fmt.Sprintf("⚠️ URGENT: %s Subscription Expires Today!", data.SubscriptionName)
+				} else {
+					return fmt.Sprintf("⚠️ %s Subscription Expiry Notice", data.SubscriptionName)
+				}
 			},
 			GenerateBody: func(data TemplateData) string {
 				return generateEmailTemplate(data)
@@ -84,12 +102,13 @@ func FindTemplateByDays(daysBefore int) (TemplateType, bool) {
 		return SevenDaysReminder, true
 	case 5:
 		return FiveDaysReminder, true
-	case 2:
-		return TwoDaysReminder, true
+	case 3: // Changed from 2 to 3
+		return ThreeDaysReminder, true
 	case 1:
 		return OneDayReminder, true
 	default:
-		return "", false
+		// For any other number of days, use the custom template
+		return CustomReminder, true
 	}
 }
 

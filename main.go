@@ -9,14 +9,14 @@ import (
 	"time"
 
 	"github.com/AnuragThePathak/my-go-packages/srv"
-	"github.com/anuragthepathak/subscription-management/config"
-	"github.com/anuragthepathak/subscription-management/controllers"
-	"github.com/anuragthepathak/subscription-management/email"
-	"github.com/anuragthepathak/subscription-management/middlewares"
-	"github.com/anuragthepathak/subscription-management/queue"
-	"github.com/anuragthepathak/subscription-management/repositories"
-	"github.com/anuragthepathak/subscription-management/services"
-	"github.com/anuragthepathak/subscription-management/wrappers"
+	"github.com/anuragthepathak/subscription-management/internal/adapters"
+	"github.com/anuragthepathak/subscription-management/internal/api/controllers"
+	"github.com/anuragthepathak/subscription-management/internal/api/middlewares"
+	"github.com/anuragthepathak/subscription-management/internal/api/shared/config"
+	"github.com/anuragthepathak/subscription-management/internal/domain/repositories"
+	"github.com/anuragthepathak/subscription-management/internal/domain/services"
+	"github.com/anuragthepathak/subscription-management/internal/notifications"
+	"github.com/anuragthepathak/subscription-management/internal/scheduler"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-redis/redis_rate/v10"
@@ -48,7 +48,7 @@ func main() {
 	)
 
 	// Connect to the database
-	var database *wrappers.Database
+	var database *adapters.Database
 	{
 		if database, err = config.DatabaseConnection(cf.Database); err != nil {
 			slog.Error("Failed to connect to database",
@@ -59,7 +59,7 @@ func main() {
 		}
 	}
 
-	var redis *wrappers.Redis
+	var redis *adapters.Redis
 	{
 		redis = config.RedisConnection(cf.Redis)
 		if err = redis.Ping(ctx); err != nil {
@@ -110,10 +110,10 @@ func main() {
 	authService := services.NewAuthService(userRepository, jwtService)
 	subscriptionService := services.NewSubscriptionService(subscriptionRepository, billRepository)
 	
-	var scheduler *wrappers.Scheduler
-	var queueWorker *wrappers.QueueWorker
+	var schedulerAdapter *adapters.Scheduler
+	var schedulerWorkerAdapter *adapters.SchedulerWorker
 	{
-		sch := queue.NewSubscriptionScheduler(
+		sch := scheduler.NewSubscriptionScheduler(
 			subscriptionService,
 			redis.Client,
 			config.QueueRedisConfig(cf.Redis),
@@ -129,14 +129,14 @@ func main() {
 			}
 		}()
 
-		scheduler = &wrappers.Scheduler{
+		schedulerAdapter = &adapters.Scheduler{
 			Scheduler: sch,
 		}
 
-		worker := queue.NewReminderWorker(
+		worker := scheduler.NewReminderWorker(
 			subscriptionService,
 			userService,
-			email.NewEmailSender(cf.Email),
+			notifications.NewEmailSender(cf.Email),
 			redis.Client,
 			config.QueueRedisConfig(cf.Redis),
 			cf.QueueWorker.Concurrency,
@@ -150,12 +150,12 @@ func main() {
 			}
 		}()
 
-		queueWorker = &wrappers.QueueWorker{
+		schedulerWorkerAdapter = &adapters.SchedulerWorker{
 			Worker: worker,
 		}
 	}
 	
-	var apiServer wrappers.Server
+	var apiServer adapters.Server
 	{
 		// Setup router
 		r := chi.NewRouter()
@@ -199,8 +199,8 @@ func main() {
 		10*time.Second,
 		database,
 		redis,
-		scheduler,
-		queueWorker,
+		schedulerAdapter,
+		schedulerWorkerAdapter,
 	)
 
 	slog.Info("Server shutdown completed")

@@ -141,14 +141,6 @@ The API supports the following endpoints:
 
 ## Development
 
-### Testing
-
-Run the tests with:
-
-```bash
-go test ./...
-```
-
 ### Building
 
 Build the application with:
@@ -156,6 +148,53 @@ Build the application with:
 ```bash
 go build -o subscription-service
 ```
+
+### Example configuration
+
+config.yaml
+
+```yaml
+server:
+  port: 8080  # Port your server will run on
+tls:
+  enabled: false  # Set to true to enable TLS
+  cert_path: ""  # Path to TLS certificate (required if TLS is enabled)
+  key_path: ""  # Path to TLS private key (required if TLS is enabled)
+database:
+  url: "mongodb://localhost:27017"  # MongoDB connection URI
+  name: "main"  # MongoDB database name
+jwt:
+  access_secret: "your-access-secret-key-here"  # Secret used to sign access tokens
+  refresh_secret: "your-refresh-secret-key-here"  # Secret used to sign refresh tokens
+  access_timeout: 1  # Expiry in hours for access tokens
+  refresh_timeout: 168  # Expiry in hours for refresh tokens (e.g., 7 days)
+  issuer: "subscription-management"  # Issuer claim for tokens
+rate_limiter:
+  app:
+    rate: 1
+    burst: 5
+    period: "2s"
+  redis:
+    url: "localhost:6379"
+    password: ""
+    db: 0
+scheduler:
+  interval: "12h"
+  reminder_days: [1, 3, 7]  # Days before expiration to send reminders
+queue_worker:
+  concurrency: 2  # Number of concurrent workers for processing tasks
+email:
+  smtp_host: "smtp.gmail.com"  # SMTP server host
+  smtp_port: 587  # SMTP server port
+  from_email: "no-reply@subscription.com"
+  from_name: "Subscription Management"  # Name to display in the "From" field
+  smtp_username: "your-email@gmail.com"
+  smtp_password: "your-app-password"  # SMTP server password
+  account_url: "https://example.com/account"  # URL for account management
+  support_url: "https://example.com/support"  # URL for support
+env: "development"  # Environment (development, production, etc.)
+```
+
 
 ## License
 

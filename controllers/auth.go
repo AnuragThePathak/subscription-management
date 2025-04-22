@@ -11,11 +11,11 @@ import (
 
 type authController struct {
 	authService services.AuthService
-	userService services.UserService
+	userService services.UserServiceExternal
 }
 
 // NewAuthController initializes the authentication controller with routes.
-func NewAuthController(authService services.AuthService, userService services.UserService) http.Handler {
+func NewAuthController(authService services.AuthService, userService services.UserServiceExternal) http.Handler {
 	c := &authController{
 		authService,
 		userService,

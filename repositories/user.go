@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/anuragthepathak/subscription-management/apperror"
+	"github.com/anuragthepathak/subscription-management/lib"
 	"github.com/anuragthepathak/subscription-management/models"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -59,48 +60,17 @@ func (uc *userRepository) Create(ctx context.Context, user *models.User) (*model
 }
 
 func (uc *userRepository) FindByEmail(ctx context.Context, email string) (*models.User, error) {
-	var user models.User
-	if err := uc.collection.FindOne(ctx, bson.M{"email": email}).Decode(&user); err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, apperror.NewNotFoundError("User not found")
-		}
-		return nil, apperror.NewDBError(err)
-	}
-	return &user, nil
+	filter := bson.M{"email": email}
+	return lib.FindOne[models.User](ctx, uc.collection, filter)
 }
 
 func (uc *userRepository) FindByID(ctx context.Context, id bson.ObjectID) (*models.User, error) {
-	var user models.User
-	if err := uc.collection.FindOne(ctx, bson.M{"_id": id}, options.FindOne()).Decode(&user); err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, apperror.NewNotFoundError("User not found")
-		}
-		return nil, apperror.NewDBError(err)
-	}
-	return &user, nil
+	filter := bson.M{"_id": id}
+	return lib.FindOne[models.User](ctx, uc.collection, filter)
 }
 
 func (uc *userRepository) GetAll(ctx context.Context) ([]*models.User, error) {
-	var users []*models.User
-	cursor, err := uc.collection.Find(ctx, bson.M{})
-	if err != nil {
-		return nil, apperror.NewDBError(err)
-	}
-	defer cursor.Close(ctx)
-
-	for cursor.Next(ctx) {
-		var user models.User
-		if err := cursor.Decode(&user); err != nil {
-			return nil, apperror.NewDBError(err)
-		}
-		users = append(users, &user)
-	}
-
-	if err := cursor.Err(); err != nil {
-		return nil, apperror.NewDBError(err)
-	}
-
-	return users, nil
+	return lib.FindMany[models.User](ctx, uc.collection, bson.M{})
 }
 
 func (uc *userRepository) Update(ctx context.Context, user *models.User) (*models.User, error) {

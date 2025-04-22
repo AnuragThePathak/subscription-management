@@ -30,7 +30,6 @@ type TemplateData struct {
 	RenewalDate      string
 	PlanName         string
 	Price            string
-	PaymentMethod    string
 	AccountURL       string
 	SupportURL       string
 	DaysLeft         int
@@ -42,7 +41,7 @@ func GetTemplates() map[TemplateType]EmailTemplate {
 		SevenDaysReminder: {
 			Label: "7 days before reminder",
 			GenerateSubject: func(data TemplateData) string {
-				return fmt.Sprintf("📅 Reminder: Your %s Subscription Expires in 7 Days!", data.SubscriptionName)
+				return fmt.Sprintf("📅 Reminder: Your %s Subscription Renews in 7 Days!", data.SubscriptionName)
 			},
 			GenerateBody: func(data TemplateData) string {
 				return generateEmailTemplate(data)
@@ -51,16 +50,16 @@ func GetTemplates() map[TemplateType]EmailTemplate {
 		FiveDaysReminder: {
 			Label: "5 days before reminder",
 			GenerateSubject: func(data TemplateData) string {
-				return fmt.Sprintf("⏳ %s Expires in 5 Days - Stay Subscribed!", data.SubscriptionName)
+				return fmt.Sprintf("⏳ %s Renews in 5 Days - Stay Subscribed!", data.SubscriptionName)
 			},
 			GenerateBody: func(data TemplateData) string {
 				return generateEmailTemplate(data)
 			},
 		},
-		ThreeDaysReminder: { // Changed from TwoDaysReminder to ThreeDaysReminder
-			Label: "3 days before reminder", // Changed from 2 to 3
+		ThreeDaysReminder: {
+			Label: "3 days before reminder",
 			GenerateSubject: func(data TemplateData) string {
-				return fmt.Sprintf("🚀 3 Days Left! %s Subscription Expiry", data.SubscriptionName) // Changed from 2 to 3
+				return fmt.Sprintf("🚀 3 Days Left! %s Subscription Renewal", data.SubscriptionName) // Changed from 2 to 3
 			},
 			GenerateBody: func(data TemplateData) string {
 				return generateEmailTemplate(data)
@@ -69,7 +68,7 @@ func GetTemplates() map[TemplateType]EmailTemplate {
 		OneDayReminder: {
 			Label: "1 day before reminder",
 			GenerateSubject: func(data TemplateData) string {
-				return fmt.Sprintf("⚡ Final Reminder: %s Expires Tomorrow!", data.SubscriptionName)
+				return fmt.Sprintf("⚡ Final Reminder: %s Renews Tomorrow!", data.SubscriptionName)
 			},
 			GenerateBody: func(data TemplateData) string {
 				return generateEmailTemplate(data)
@@ -79,13 +78,13 @@ func GetTemplates() map[TemplateType]EmailTemplate {
 			Label: "Custom days reminder",
 			GenerateSubject: func(data TemplateData) string {
 				if data.DaysLeft > 7 {
-					return fmt.Sprintf("📆 Your %s Subscription Expires in %d Days", data.SubscriptionName, data.DaysLeft)
+					return fmt.Sprintf("📆 Your %s Subscription Renews in %d Days", data.SubscriptionName, data.DaysLeft)
 				} else if data.DaysLeft > 1 {
-					return fmt.Sprintf("🔔 %s Subscription Expires in %d Days!", data.SubscriptionName, data.DaysLeft)
+					return fmt.Sprintf("🔔 %s Subscription Renews in %d Days!", data.SubscriptionName, data.DaysLeft)
 				} else if data.DaysLeft == 0 {
-					return fmt.Sprintf("⚠️ URGENT: %s Subscription Expires Today!", data.SubscriptionName)
+					return fmt.Sprintf("⚠️ URGENT: %s Subscription Renews Today!", data.SubscriptionName)
 				} else {
-					return fmt.Sprintf("⚠️ %s Subscription Expiry Notice", data.SubscriptionName)
+					return fmt.Sprintf("⚠️ %s Subscription Renewal Notice", data.SubscriptionName)
 				}
 			},
 			GenerateBody: func(data TemplateData) string {
@@ -142,11 +141,6 @@ func generateEmailTemplate(data TemplateData) string {
                             <strong>Price:</strong> %s
                         </td>
                     </tr>
-                    <tr>
-                        <td style="font-size: 16px;">
-                            <strong>Payment Method:</strong> %s
-                        </td>
-                    </tr>
                 </table>
                 <p style="font-size: 16px; margin-bottom: 25px;">If you'd like to make changes or cancel your subscription, please visit your <a href="%s" style="color: #4a90e2; text-decoration: none;">account settings</a> before the renewal date.</p>
                 <p style="font-size: 16px; margin-top: 30px;">Need help? <a href="%s" style="color: #4a90e2; text-decoration: none;">Contact our support team</a> anytime.</p>
@@ -170,5 +164,5 @@ func generateEmailTemplate(data TemplateData) string {
         </tr>
     </table>
 </div>
-`, data.UserName, data.SubscriptionName, data.RenewalDate, data.DaysLeft, data.PlanName, data.Price, data.PaymentMethod, data.AccountURL, data.SupportURL)
+`, data.UserName, data.SubscriptionName, data.RenewalDate, data.DaysLeft, data.PlanName, data.Price, data.AccountURL, data.SupportURL)
 }

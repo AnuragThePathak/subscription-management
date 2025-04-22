@@ -4,17 +4,17 @@ import (
 	"net/http"
 
 	"github.com/anuragthepathak/subscription-management/endpoint"
-	"github.com/anuragthepathak/subscription-management/middlewares"
+	"github.com/anuragthepathak/subscription-management/lib"
 	"github.com/anuragthepathak/subscription-management/models"
 	"github.com/anuragthepathak/subscription-management/services"
 	"github.com/go-chi/chi/v5"
 )
 
 type userController struct {
-	userService services.UserService
+	userService services.UserServiceExternal
 }
 
-func NewUserController(userService services.UserService) http.Handler {
+func NewUserController(userService services.UserServiceExternal) http.Handler {
 	c := &userController{userService}
 
 	r := chi.NewRouter()
@@ -38,7 +38,7 @@ func (c *userController) getAllUsers(w http.ResponseWriter, r *http.Request) {
 
 func (c *userController) getUserByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	claimedUserID, _ := middlewares.GetUserID(r.Context())
+	claimedUserID, _ := lib.GetUserID(r.Context())
 
 	endpoint.ServeRequest(endpoint.InternalRequest{
 		W: w,
@@ -52,7 +52,7 @@ func (c *userController) getUserByID(w http.ResponseWriter, r *http.Request) {
 
 func (c *userController) updateUser(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	claimedUserID, _ := middlewares.GetUserID(r.Context())
+	claimedUserID, _ := lib.GetUserID(r.Context())
 	updateReq := models.UserUpdateRequest{}
 
 	endpoint.ServeRequest(endpoint.InternalRequest{
@@ -68,7 +68,7 @@ func (c *userController) updateUser(w http.ResponseWriter, r *http.Request) {
 
 func (c *userController) deleteUser(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	claimedUserID, _ := middlewares.GetUserID(r.Context())
+	claimedUserID, _ := lib.GetUserID(r.Context())
 
 	endpoint.ServeRequest(endpoint.InternalRequest{
 		W: w,

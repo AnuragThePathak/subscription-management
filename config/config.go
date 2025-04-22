@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/anuragthepathak/subscription-management/email"
+	"github.com/anuragthepathak/subscription-management/services"
 )
 
 // ServerConfig holds the server configuration, including TLS settings.
@@ -20,15 +21,6 @@ type ServerConfig struct {
 type DatabaseConfig struct {
 	URL  string `mapstructure:"url"`
 	Name string `mapstructure:"name"`
-}
-
-// JWTConfig holds the JWT token generation and validation settings.
-type JWTConfig struct {
-	AccessSecret       string `mapstructure:"access_secret"`
-	RefreshSecret      string `mapstructure:"refresh_secret"`
-	AccessExpiryHours  int    `mapstructure:"access_timeout"`
-	RefreshExpiryHours int    `mapstructure:"refresh_timeout"`
-	Issuer             string `mapstructure:"issuer"`
 }
 
 // RateLimiterConfig defines the rate limiting settings.
@@ -61,14 +53,14 @@ type QueueWorkerConfig struct {
 
 // Config holds the complete application configuration.
 type Config struct {
-	Server      ServerConfig      `mapstructure:"server"`
-	Database    DatabaseConfig    `mapstructure:"database"`
-	JWT         JWTConfig         `mapstructure:"jwt"`
-	Redis       RedisConfig       `mapstructure:"redis"`
-	Env         string            `mapstructure:"env"` // Current application environment (e.g., development, production).
-	Scheduler   SchedulerConfig   `mapstructure:"scheduler"`
-	QueueWorker QueueWorkerConfig `mapstructure:"queue_worker"`
-	Email       email.EmailConfig `mapstructure:"email"`
+	Server      ServerConfig       `mapstructure:"server"`
+	Database    DatabaseConfig     `mapstructure:"database"`
+	JWT         services.JWTConfig `mapstructure:"jwt"`
+	Redis       RedisConfig        `mapstructure:"redis"`
+	Env         string             `mapstructure:"env"` // Current application environment (e.g., development, production).
+	Scheduler   SchedulerConfig    `mapstructure:"scheduler"`
+	QueueWorker QueueWorkerConfig  `mapstructure:"queue_worker"`
+	Email       email.EmailConfig  `mapstructure:"email"`
 
 	RateLimiter struct {
 		App RateLimiterConfig `mapstructure:"app"` // Application-level rate limiter settings.

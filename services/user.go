@@ -12,7 +12,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-type UserService interface {
+type UserServiceExternal interface {
 	CreateUser(context.Context, *models.User) (*models.User, error)
 	GetAllUsers(context.Context) ([]*models.User, error)
 	GetUserByID(context.Context, string, string) (*models.User, error)
@@ -20,8 +20,17 @@ type UserService interface {
 	DeleteUser(context.Context, string, string) error
 }
 
+type UserServiceInternal interface {
+	FetchUserByIDInternal(context.Context, bson.ObjectID) (*models.User, error)
+}
+
+type UserService interface {
+	UserServiceExternal
+	UserServiceInternal
+}
+
 type userService struct {
-	userRepository repositories.UserRepository
+	userRepository         repositories.UserRepository
 	subscriptionRepository repositories.SubscriptionRepository
 }
 
@@ -54,15 +63,13 @@ func (us *userService) CreateUser(ctx context.Context, user *models.User) (*mode
 	}
 	user.Password = string(hashedPassword)
 
+	// Set ID
+	user.ID = bson.NewObjectID()
+
 	// Set timestamps
 	now := time.Now()
 	user.CreatedAt = now
 	user.UpdatedAt = now
-
-	// Set ID if not provided
-	if user.ID.IsZero() {
-		user.ID = bson.NewObjectID()
-	}
 
 	// Insert into database
 	return us.userRepository.Create(ctx, user)
@@ -175,4 +182,8 @@ func (us *userService) DeleteUser(ctx context.Context, id string, claimedUserID 
 
 	// Delete the user
 	return us.userRepository.Delete(ctx, userID)
+}
+
+func (us *userService) FetchUserByIDInternal(ctx context.Context, id bson.ObjectID) (*models.User, error) {
+	return us.userRepository.FindByID(ctx, id)
 }

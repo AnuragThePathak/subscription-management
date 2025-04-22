@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/anuragthepathak/subscription-management/apperror"
+	"github.com/anuragthepathak/subscription-management/lib"
 	"github.com/anuragthepathak/subscription-management/models"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -19,6 +20,8 @@ type SubscriptionRepository interface {
 	GetByUserID(context.Context, bson.ObjectID) ([]*models.Subscription, error)
 	GetActiveSubscriptions(context.Context) ([]*models.Subscription, error)
 	GetSubscriptionsDueForReminder(context.Context, []int) ([]*models.Subscription, error)
+	GetSubscriptionsDueForRenewal(context.Context, time.Time, time.Time) ([]*models.Subscription, error)
+	GetCancelledExpiredSubscriptions(context.Context) ([]*models.Subscription, error)
 	Update(ctx context.Context, subscription *models.Subscription) (*models.Subscription, error)
 	Delete(ctx context.Context, id bson.ObjectID) error
 }
@@ -30,13 +33,13 @@ type subscriptionRepository struct {
 func NewSubscriptionRepository(ctx context.Context, db *mongo.Database) (SubscriptionRepository, error) {
 	indexes := []mongo.IndexModel{
 		{
-			Keys:    bson.D{{Key: "userId", Value: 1}},
+			Keys:    bson.D{{Key: "user_id", Value: 1}},
 			Options: options.Index().SetSparse(true),
 		},
 		{
 			Keys: bson.D{
-				{Key: "renewalDate", Value: 1},
 				{Key: "status", Value: 1},
+				{Key: "valid_till", Value: 1},
 			},
 		},
 	}
@@ -66,26 +69,26 @@ func (r *subscriptionRepository) Create(ctx context.Context, subscription *model
 
 func (r *subscriptionRepository) GetByID(ctx context.Context, id bson.ObjectID) (*models.Subscription, error) {
 	filter := bson.M{"_id": id}
-	return r.findSubscription(ctx, filter)
+	return lib.FindOne[models.Subscription](ctx, r.collection, filter)
 }
 
 func (r *subscriptionRepository) GetAll(ctx context.Context) ([]*models.Subscription, error) {
-	return r.findSubscriptions(ctx, bson.M{})
+	return lib.FindMany[models.Subscription](ctx, r.collection, bson.M{})
 }
 
 func (r *subscriptionRepository) GetByUserID(ctx context.Context, userID bson.ObjectID) ([]*models.Subscription, error) {
-	filter := bson.M{"userId": userID}
-	return r.findSubscriptions(ctx, filter)
+	filter := bson.M{"user_id": userID}
+	return lib.FindMany[models.Subscription](ctx, r.collection, filter)
 }
 
 func (r *subscriptionRepository) GetActiveSubscriptions(ctx context.Context) ([]*models.Subscription, error) {
 	filter := bson.M{
 		"status": models.Active,
-		"renewalDate": bson.M{
+		"valid_till": bson.M{
 			"$gt": time.Now(),
 		},
 	}
-	return r.findSubscriptions(ctx, filter)
+	return lib.FindMany[models.Subscription](ctx, r.collection, filter)
 }
 
 func (r *subscriptionRepository) GetSubscriptionsDueForReminder(ctx context.Context, daysBefore []int) ([]*models.Subscription, error) {
@@ -97,7 +100,7 @@ func (r *subscriptionRepository) GetSubscriptionsDueForReminder(ctx context.Cont
 		endOfTargetDay := startOfTargetDay.Add(24 * time.Hour)
 
 		orConditions = append(orConditions, bson.M{
-			"renewalDate": bson.M{
+			"valid_till": bson.M{
 				"$gte": startOfTargetDay,
 				"$lt":  endOfTargetDay,
 			},
@@ -108,7 +111,32 @@ func (r *subscriptionRepository) GetSubscriptionsDueForReminder(ctx context.Cont
 		"status": models.Active,
 		"$or":    orConditions,
 	}
-	return r.findSubscriptions(ctx, filter)
+	return lib.FindMany[models.Subscription](ctx, r.collection, filter)
+}
+
+func (r *subscriptionRepository) GetSubscriptionsDueForRenewal(ctx context.Context, startTime, endTime time.Time) ([]*models.Subscription, error) {
+	filter := bson.M{
+		"status": models.Active,
+		"valid_till": bson.M{
+			"$gte": startTime,
+			"$lte": endTime,
+		},
+	}
+
+	opts := options.Find().SetSort(bson.D{{Key: "valid_till", Value: 1}})
+
+	return lib.FindMany[models.Subscription](ctx, r.collection, filter, opts)
+}
+
+func (r *subscriptionRepository) GetCancelledExpiredSubscriptions(ctx context.Context) ([]*models.Subscription, error) {
+	filter := bson.M{
+		"status": models.Cancelled,
+		"valid_till": bson.M{
+			"$lt": time.Now(),
+		},
+	}
+
+	return lib.FindMany[models.Subscription](ctx, r.collection, filter)
 }
 
 func (r *subscriptionRepository) Update(ctx context.Context, subscription *models.Subscription) (*models.Subscription, error) {
@@ -138,38 +166,4 @@ func (r *subscriptionRepository) Delete(ctx context.Context, id bson.ObjectID) e
 	}
 
 	return nil
-}
-
-func (r *subscriptionRepository) findSubscription(ctx context.Context, filter bson.M) (*models.Subscription, error) {
-	var subscription models.Subscription
-	err := r.collection.FindOne(ctx, filter).Decode(&subscription)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, apperror.NewNotFoundError("Subscription not found")
-		}
-		return nil, apperror.NewDBError(err)
-	}
-	return &subscription, nil
-}
-
-func (r *subscriptionRepository) findSubscriptions(ctx context.Context, filter bson.M) ([]*models.Subscription, error) {
-	var subscriptions []*models.Subscription
-	cursor, err := r.collection.Find(ctx, filter)
-	if err != nil {
-		return nil, apperror.NewDBError(err)
-	}
-	defer cursor.Close(ctx)
-
-	for cursor.Next(ctx) {
-		var subscription models.Subscription
-		if err := cursor.Decode(&subscription); err != nil {
-			return nil, apperror.NewDBError(err)
-		}
-		subscriptions = append(subscriptions, &subscription)
-	}
-
-	if err := cursor.Err(); err != nil {
-		return nil, apperror.NewDBError(err)
-	}
-	return subscriptions, nil
 }

@@ -12,8 +12,8 @@ type User struct {
 	Name      string        `bson:"name"`
 	Email     string        `bson:"email"`
 	Password  string        `bson:"password"`
-	CreatedAt time.Time     `bson:"createdAt"`
-	UpdatedAt time.Time     `bson:"updatedAt"`
+	CreatedAt time.Time     `bson:"created_at"`
+	UpdatedAt time.Time     `bson:"updated_at"`
 }
 
 // UserRequest represents the data structure for user registration API requests.

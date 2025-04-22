@@ -38,7 +38,7 @@ func ServeRequest(req InternalRequest) {
 		slog.Debug("Request failed", slog.String("error", err.Error()))
 		var appErr apperror.AppError
 		if errors.As(err, &appErr) {
-			WriteAPIResponse(req.W, appErr.Status(), appErr.Message())
+			WriteAPIResponse(req.W, appErr.Status(), map[string]string{"error": appErr.Message()})
 		} else {
 			WriteAPIResponse(req.W, http.StatusInternalServerError, nil)
 		}

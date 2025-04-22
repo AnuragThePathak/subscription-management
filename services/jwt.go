@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/anuragthepathak/subscription-management/config"
 	"github.com/anuragthepathak/subscription-management/models"
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -15,12 +14,21 @@ type JWTService interface {
 	ValidateToken(tokenString string, tokenType models.TokenType) (*models.Claims, error)
 }
 
+// JWTConfig holds the JWT token generation and validation settings.
+type JWTConfig struct {
+	AccessSecret       string `mapstructure:"access_secret"`
+	RefreshSecret      string `mapstructure:"refresh_secret"`
+	AccessExpiryHours  int    `mapstructure:"access_timeout"`
+	RefreshExpiryHours int    `mapstructure:"refresh_timeout"`
+	Issuer             string `mapstructure:"issuer"`
+}
+
 type jwtService struct {
-	config config.JWTConfig
+	config JWTConfig
 }
 
 // NewJWTService creates a new JWT service instance.
-func NewJWTService(config config.JWTConfig) JWTService {
+func NewJWTService(config JWTConfig) JWTService {
 	return &jwtService{
 		config: config,
 	}

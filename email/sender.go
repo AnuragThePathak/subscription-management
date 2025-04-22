@@ -63,7 +63,7 @@ func (es *EmailSender) SendReminderEmail(ctx context.Context, toEmail string, us
 	}
 
 	// Format price string.
-	priceStr := fmt.Sprintf("%s %.2f (%s)",
+	priceStr := fmt.Sprintf("%s %.2d (%s)",
 		subscription.Currency,
 		subscription.Price,
 		subscription.Frequency,
@@ -73,10 +73,9 @@ func (es *EmailSender) SendReminderEmail(ctx context.Context, toEmail string, us
 	data := TemplateData{
 		UserName:         userName,
 		SubscriptionName: subscription.Name,
-		RenewalDate:      FormatTime(subscription.RenewalDate),
+		RenewalDate:      FormatTime(subscription.ValidTill.Local()),
 		PlanName:         subscription.Name,
 		Price:            priceStr,
-		PaymentMethod:    subscription.PaymentMethod,
 		AccountURL:       es.config.AccountURL,
 		SupportURL:       es.config.SupportURL,
 		DaysLeft:         daysBefore,
@@ -106,6 +105,65 @@ func (es *EmailSender) SendReminderEmail(ctx context.Context, toEmail string, us
 		slog.String("subscription", subscription.Name),
 	)
 
+	return nil
+}
+
+// SendRenewalConfirmationEmail sends an email notifying a user that their subscription has been automatically renewed
+func (e *EmailSender) SendRenewalConfirmationEmail(
+	ctx context.Context,
+	userEmail string,
+	userName string,
+	subscription *models.Subscription,
+) error {
+	// Check context to allow for cancellation.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	subject := fmt.Sprintf("Your %s subscription has been renewed", subscription.Name)
+	renewalAmount := fmt.Sprintf("%d %s", subscription.Price, subscription.Currency)
+	// Format the email body
+	body := fmt.Sprintf(`
+	Hello %s,
+	
+	Your subscription to %s has been automatically renewed.
+	
+	Subscription Details:
+	- Name: %s
+	- Amount: %s
+	- Valid Till: %s
+	
+	If you did not want this renewal, you can cancel your subscription through your account.
+	
+	Thank you for your continued subscription!
+	
+	Best regards,
+	The Subscription Management Team
+	`,
+		userName,
+		subscription.Name,
+		subscription.Name,
+		renewalAmount,
+		subscription.ValidTill.Format("January 2, 2006"),
+	)
+
+	// Create the email message.
+	message := gomail.NewMessage()
+	message.SetHeader("From", fmt.Sprintf("%s <%s>", e.config.FromName, e.config.FromEmail))
+	message.SetHeader("To", userEmail)
+	message.SetHeader("Subject", subject)
+	message.SetBody("text/html", body)
+
+	// Send the email.
+	if err := e.dialer.DialAndSend(message); err != nil {
+		return fmt.Errorf("failed to send renewal confirmation email: %w", err)
+	}
+	// Log the successful email sending.
+	slog.Info("Renewal confirmation email sent successfully",
+		slog.String("component", "email_service"),
+		slog.String("to", userEmail),
+		slog.String("subscription", subscription.Name),
+	)
 	return nil
 }
 

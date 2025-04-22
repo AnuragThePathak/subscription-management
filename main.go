@@ -77,6 +77,7 @@ func main() {
 
 	var userRepository repositories.UserRepository
 	var subscriptionRepository repositories.SubscriptionRepository
+	var billRepository repositories.BillRepository
 	{
 		if userRepository, err = repositories.NewUserRepository(ctx, database.DB); err != nil {
 			slog.Error("Failed to create user repository",
@@ -93,13 +94,27 @@ func main() {
 			)
 			os.Exit(1)
 		}
-	}
 
+		if billRepository, err = repositories.NewBillRepository(ctx, database.DB); err != nil {
+			slog.Error("Failed to create bill repository",
+				slog.String("component", "main"),
+				slog.Any("error", err),
+			)
+			os.Exit(1)
+		}
+	}
+	
+	appRateLimiterService := services.NewRateLimiterService(redisRateLimiter, config.NewRateLimit(&cf.RateLimiter.App), "app")
+	userService := services.NewUserService(userRepository, subscriptionRepository)
+	jwtService := services.NewJWTService(cf.JWT)
+	authService := services.NewAuthService(userRepository, jwtService)
+	subscriptionService := services.NewSubscriptionService(subscriptionRepository, billRepository)
+	
 	var scheduler *wrappers.Scheduler
 	var queueWorker *wrappers.QueueWorker
 	{
 		sch := queue.NewSubscriptionScheduler(
-			subscriptionRepository,
+			subscriptionService,
 			redis.Client,
 			config.QueueRedisConfig(cf.Redis),
 			cf.Scheduler.Interval,
@@ -119,8 +134,8 @@ func main() {
 		}
 
 		worker := queue.NewReminderWorker(
-			subscriptionRepository,
-			userRepository,
+			subscriptionService,
+			userService,
 			email.NewEmailSender(cf.Email),
 			redis.Client,
 			config.QueueRedisConfig(cf.Redis),
@@ -139,13 +154,7 @@ func main() {
 			Worker: worker,
 		}
 	}
-
-	appRateLimiterService := services.NewRateLimiterService(redisRateLimiter, config.NewRateLimit(&cf.RateLimiter.App), "app")
-	userService := services.NewUserService(userRepository, subscriptionRepository)
-	jwtService := services.NewJWTService(cf.JWT)
-	authService := services.NewAuthService(userRepository, jwtService)
-	subscriptionService := services.NewSubscriptionService(subscriptionRepository)
-
+	
 	var apiServer wrappers.Server
 	{
 		// Setup router

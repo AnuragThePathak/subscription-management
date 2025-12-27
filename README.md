@@ -1,218 +1,304 @@
 # Subscription Management Service
 
-A robust Go-based subscription management system for handling user subscriptions, billing, and authentication.
+A backend service written in Go for managing recurring subscriptions—handling creation, billing cycles, automated renewals, cancellations, and user notifications.
 
-## Overview
+## What This System Does
 
-This project provides a complete backend service for managing user subscriptions, with features for authentication, subscription lifecycle management, billing, and notifications.
+This service manages the complete lifecycle of user subscriptions: from initial creation through recurring billing cycles to eventual expiration or cancellation. It supports multiple billing frequencies (daily, weekly, monthly, yearly), handles automatic renewals, processes cancellations with proper validity period handling, and sends email notifications for key lifecycle events.
 
-## Features
+The system is designed as a learning reference for production-grade backend architecture, emphasizing:
 
-- User authentication and authorization
-- Subscription creation, management, and tracking
-- Automated billing
-- Email notifications for subscription events
-- Rate limiting for API protection
-- Background job processing with scheduler and worker components
+- Clean separation between API layer, domain logic, and infrastructure
+- Domain-driven design principles applied pragmatically
+- Background processing patterns for time-sensitive operations
+- Graceful degradation and proper lifecycle management
 
-## Technologies
+---
 
-- Go (Golang)
-- MongoDB for persistent storage
-- Redis for caching and rate limiting
-- JWT for authentication
-- RESTful API design
-  
-## Internal Working
+## Design Philosophy
 
-- Two main components api server and scheduler in a loosely coupled monolith architecture.
-- Configuration management using either yaml or environment variables.
-- Users can create and cancel subscriptions.
-- Active subscriptions are automatically renewed just before the billing period ends.
-- Cancelled subscriptions are refunded only if the billing period has yet not started.
-- Cancelled subscriptions remain active until the current billing ends and becomes expired automatically after that.
-- Reminder emails are sent on multiple days before renewal for active subscriptions and also immediately it is renewed.
+### Loosely Coupled Monolith
+
+This system is architected as a **loosely coupled monolith**—a single deployable unit with clear internal boundaries. This choice reflects a deliberate tradeoff:
+
+- **Single process simplicity**: One deployment artifact, shared database connections, straightforward debugging
+- **Module isolation**: The API server and background scheduler are separate concerns that could be extracted into separate services later if scaling demands it
+- **Reduced operational overhead**: No service mesh, no inter-service communication, no distributed tracing complexity
+
+The scheduler and API server share domain logic but have distinct responsibilities. They run as goroutines within the same process but interact only through well-defined service interfaces—making future extraction straightforward.
+
+### Domain-Driven Boundaries
+
+The codebase is organized around **bounded contexts** rather than technical layers:
+
+```
+internal/
+├── api/           → HTTP transport layer (controllers, middleware, request handling)
+├── domain/        → Business logic (models, services, repository interfaces)
+├── adapters/      → Infrastructure wiring (database, Redis, server lifecycle)
+├── scheduler/     → Background job orchestration (polling, task queue)
+├── notifications/ → External integrations (email delivery)
+└── lib/           → Shared utilities (time helpers, authentication)
+```
+
+**Why this separation matters:**
+
+- `domain/` contains the core business logic, expressed through services that depend only on interfaces. While repository implementations are backed by MongoDB, the business logic itself remains isolated from persistence details and can be tested independently.
+- `api/` knows how to handle HTTP but delegates all business decisions to domain services
+- `adapters/` handles the messy reality of external systems (connection pooling, graceful shutdown)
+- `scheduler/` is treated as a separate subsystem with its own entry points
+
+### Repository Pattern
+
+Domain services depend on **repository interfaces**, not concrete implementations. This:
+
+- Enables testing with in-memory fakes
+- Decouples business logic from MongoDB specifics
+- Makes database migration feasible without rewriting service logic
+
+> For implementation details, see [ARCHITECTURE.md → Repository Pattern](docs/ARCHITECTURE.md#repository-pattern)
+
+---
+
+## Subscription Lifecycle
+
+A subscription moves through well-defined states with clear transition rules:
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│   ┌─────────┐      auto-renew      ┌─────────┐                   │
+│   │         │ ◄─────────────────── │         │                   │
+│   │ ACTIVE  │                      │ ACTIVE  │ (next period)     │
+│   │         │ ────────────────────►│         │                   │
+│   └────┬────┘     renewal date     └─────────┘                   │
+│        │                                                         │
+│        │ user cancels                                            │
+│        ▼                                                         │
+│   ┌────────────┐     validity ends     ┌─────────┐               │
+│   │ CANCELLED  │ ─────────────────────►│ EXPIRED │               │
+│   └────────────┘                       └─────────┘               │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**Key behaviors:**
+
+| Action | Behavior |
+|--------|----------|
+| **Create** | Subscription starts `active`, validity set based on billing frequency |
+| **Auto-renew** | Scheduler renews active subscriptions before billing period ends, creates billing record, sends confirmation email |
+| **Cancel** | Marks subscription `cancelled` but remains valid until current period ends—no prorated refund mid-cycle |
+| **Expire** | Cancelled subscriptions transition to `expired` once validity ends |
+| **Delete** | Hard delete is permitted only when billing hasn't started (otherwise, cancel instead) |
+
+**Cancellation nuances:**
+
+- A cancelled subscription with remaining validity continues to work until `ValidTill`
+- Refunds are only processed if the current billing period hasn't started yet
+- The scheduler automatically marks cancelled subscriptions as expired after their valid period ends
+
+> For the full state machine diagram, see [ARCHITECTURE.md → Domain Model](docs/ARCHITECTURE.md#domain-model)
+
+---
+
+## Background Processing
+
+### Scheduler + Worker Architecture
+
+Time-sensitive operations (renewals, reminders, expirations) are handled by a background subsystem with two components:
+
+```
+┌────────────────────┐          ┌────────────────────────┐
+│                    │  tasks   │                        │
+│    Scheduler       │ ───────► │    Redis Task Queue    │
+│   (polls DB on     │          │    (asynq)             │
+│    configurable    │          │                        │
+│    interval)       │          └───────────┬────────────┘
+│                    │                      │
+└────────────────────┘                      │ task payloads
+                                            ▼
+                              ┌──────────────────────────┐
+                              │                          │
+                              │    Worker Pool           │
+                              │   (concurrent handlers)  │
+                              │                          │
+                              │  • Send reminder emails  │
+                              │  • Process renewals      │
+                              │  • Mark expirations      │
+                              │                          │
+                              └──────────────────────────┘
+```
+
+**Scheduler responsibilities:**
+
+- Runs on a configurable interval (default: every 12 hours)
+- Queries for subscriptions approaching renewal, needing reminders, or requiring expiration
+- Enqueues tasks with idempotency keys to prevent duplicate processing
+
+**Worker responsibilities:**
+
+- Consumes tasks from Redis queue
+- Handles reminder notifications (configurable days before renewal: e.g., 7, 3, 1)
+- Executes automatic renewals (creates billing records, extends validity, sends confirmation)
+- Marks cancelled subscriptions as expired when validity ends
+
+**Why this design:**
+
+- Decouples "what needs to be done" (scheduler) from "how to do it" (worker)
+- Redis queue provides persistence and retry semantics via [asynq](https://github.com/hibiken/asynq)
+- Multiple workers can process concurrently without coordination
+- Scheduler and worker failures don't affect API availability
+
+> For task types, deduplication, and retry semantics, see [ARCHITECTURE.md → Scheduler Internals](docs/ARCHITECTURE.md#scheduler-internals)
+
+---
 
 ## Project Structure
 
 ```
-📦 
-├─ .gitignore
-├─ go.mod
-├─ go.sum
-├─ internal
-│  ├─ adapters
-│  │  ├─ database.go
-│  │  ├─ redis.go
-│  │  ├─ scheduler.go
-│  │  ├─ server.go
-│  │  └─ worker.go
-│  ├─ api
-│  │  ├─ controllers
-│  │  │  ├─ auth.go
-│  │  │  ├─ subscriptions.go
-│  │  │  └─ user.go
-│  │  ├─ middlewares
-│  │  │  ├─ auth.go
-│  │  │  └─ rate_limiter.go
-│  │  └─ shared
-│  │     ├─ apperror
-│  │     │  ├─ error.go
-│  │     │  └─ factory.go
-│  │     ├─ config
-│  │     │  ├─ config.go
-│  │     │  ├─ configure.go
-│  │     │  └─ helper.go
-│  │     └─ endpoint
-│  │        ├─ endpoint.go
-│  │        ├─ internal_request.go
-│  │        └─ response.go
-│  ├─ domain
-│  │  ├─ models
-│  │  │  ├─ auth.go
-│  │  │  ├─ bill.go
-│  │  │  ├─ subscription.go
-│  │  │  └─ user.go
-│  │  ├─ repositories
-│  │  │  ├─ bill.go
-│  │  │  ├─ subscription.go
-│  │  │  └─ user.go
-│  │  └─ services
-│  │     ├─ auth.go
-│  │     ├─ jwt.go
-│  │     ├─ rate_limiter.go
-│  │     ├─ subscription.go
-│  │     └─ user.go
-│  ├─ lib
-│  │  ├─ auth.go
-│  │  ├─ mongo.go
-│  │  └─ time.go
-│  ├─ notifications
-│  │  ├─ email_sender.go
-│  │  └─ email_template.go
-│  └─ scheduler
-│     ├─ scheduler.go
-│     └─ worker.go
-└─ main.go
+subscription-management/
+├── main.go                 # Application entry point, dependency wiring
+└── internal/
+    ├── adapters/           # Infrastructure adapters and lifecycle
+    │   ├── database.go     # MongoDB connection wrapper
+    │   ├── redis.go        # Redis client with health checks
+    │   ├── server.go       # HTTP server lifecycle
+    │   ├── scheduler.go    # Scheduler shutdown interface
+    │   └── worker.go       # Worker shutdown interface
+    │
+    ├── api/                # HTTP transport layer
+    │   ├── controllers/    # Route handlers (auth, users, subscriptions)
+    │   ├── middlewares/    # Auth, rate limiting
+    │   └── shared/         # Cross-cutting API concerns
+    │       ├── apperror/   # Typed application errors
+    │       ├── config/     # Configuration loading
+    │       └── endpoint/   # Request/response helpers
+    │
+    ├── domain/             # Core business logic
+    │   ├── models/         # Domain entities (User, Subscription, Bill)
+    │   ├── repositories/   # Data access interfaces + MongoDB implementations
+    │   └── services/       # Business operations
+    │
+    ├── scheduler/          # Background processing
+    │   ├── scheduler.go    # Polling loop, task enqueueing
+    │   └── worker.go       # Task handlers (reminders, renewals, expirations)
+    │
+    ├── notifications/      # External integrations
+    │   ├── email_sender.go # SMTP email delivery
+    │   └── email_template.go # Email templates
+    │
+    └── lib/                # Shared utilities
+        ├── auth.go         # Authentication helpers
+        ├── mongo.go        # MongoDB utilities
+        └── time.go         # Time calculation helpers
 ```
 
-## Getting Started
+---
+
+## Setup
 
 ### Prerequisites
 
-- Go 1.24 or later
+- Go 1.24+
 - MongoDB
 - Redis
 
-### Installation
-
-1. Clone the repository
-   ```bash
-   git clone https://github.com/AnuragThePathak/subscription-management.git
-   cd subscription-management
-   ```
-
-2. Install dependencies
-   ```bash
-   go mod download
-   ```
-
-3. Configure the application
-   Create a `config.yaml` file based on the example configuration provided in the repository.
-
-4. Run the application
-   ```bash
-   go run main.go
-   ```
-
-## API Documentation
-
-The API supports the following endpoints:
-
-- **Authentication**
-  - `POST /api/v1/auth/register` - Register a new user
-  - `POST /api/v1/auth/login` - Log in an existing user
-  - `POST /api/v1/auth/refresh` - Refresh authentication token
-    
-- **Users**
-  - `GET /api/v1/users` - List users
-  - `GET /api/v1/users/:id` - Get user information
-  - `PUT /api/v1/users/:id` - Update user information
-  - `DELETE /api/v1/users/:id` - Delete user
-    
-- **Subscriptions**
-  - `GET /api/v1/subscriptions` - List subscriptions
-  - `POST /api/v1/subscriptions` - Create a new subscription
-  - `GET /api/v1/subscriptions/:id` - Get subscription details
-  - `GET /api/v1/subscriptions/user/:id` - List subscriptions for a user
-  - `PUT /api/v1/subscriptions/:id/cancel` - Cancel a subscription
-  - `DELETE /api/v1/subscriptions/:id` - Delete a subscription
-
-## Development
-
-### Building
-
-Build the application with:
+### Quick Start
 
 ```bash
-go build -o subscription-service
+git clone https://github.com/AnuragThePathak/subscription-management.git
+cd subscription-management
+go mod download
 ```
 
-### Example configuration
+Create `config.yaml` (see [Configuration](#configuration)) and run:
 
-config.yaml
-
-```yaml
-server:
-  port: 8080  # Port your server will run on
-tls:
-  enabled: false  # Set to true to enable TLS
-  cert_path: ""  # Path to TLS certificate (required if TLS is enabled)
-  key_path: ""  # Path to TLS private key (required if TLS is enabled)
-database:
-  url: "mongodb://localhost:27017"  # MongoDB connection URI
-  name: "main"  # MongoDB database name
-jwt:
-  access_secret: "your-access-secret-key-here"  # Secret used to sign access tokens
-  refresh_secret: "your-refresh-secret-key-here"  # Secret used to sign refresh tokens
-  access_timeout: 1  # Expiry in hours for access tokens
-  refresh_timeout: 168  # Expiry in hours for refresh tokens (e.g., 7 days)
-  issuer: "subscription-management"  # Issuer claim for tokens
-rate_limiter:
-  app:
-    rate: 1
-    burst: 5
-    period: "2s"
-  redis:
-    url: "localhost:6379"
-    password: ""
-    db: 0
-scheduler:
-  interval: "12h"
-  reminder_days: [1, 3, 7]  # Days before expiration to send reminders
-queue_worker:
-  concurrency: 2  # Number of concurrent workers for processing tasks
-email:
-  smtp_host: "smtp.gmail.com"  # SMTP server host
-  smtp_port: 587  # SMTP server port
-  from_email: "no-reply@subscription.com"
-  from_name: "Subscription Management"  # Name to display in the "From" field
-  smtp_username: "your-email@gmail.com"
-  smtp_password: "your-app-password"  # SMTP server password
-  account_url: "https://example.com/account"  # URL for account management
-  support_url: "https://example.com/support"  # URL for support
-env: "development"  # Environment (development, production, etc.)
+```bash
+go run main.go
 ```
 
+---
+
+## Configuration
+
+The service loads configuration from `config.yaml` or environment variables. Key sections:
+
+| Section | Purpose |
+|---------|---------|
+| `server` | HTTP port, TLS settings |
+| `database` | MongoDB connection URI and database name |
+| `jwt` | Token signing secrets and expiration times |
+| `rate_limiter` | API rate limiting with Redis backend |
+| `scheduler` | Polling interval and reminder schedule |
+| `queue_worker` | Worker concurrency |
+| `email` | SMTP configuration for notifications |
+
+See [CONFIGURATION.md](docs/CONFIGURATION.md) for detailed options and environment variable mappings.
+
+---
+
+## API Overview
+
+The API follows RESTful conventions with JWT-based authentication.
+
+> For JWT claims structure and token refresh flow, see [ARCHITECTURE.md → Authentication Flow](docs/ARCHITECTURE.md#authentication-flow)
+
+### Authentication
+
+```
+POST /api/v1/auth/register    # Create account
+POST /api/v1/auth/login       # Get tokens
+POST /api/v1/auth/refresh     # Refresh access token
+```
+
+### Users (authenticated)
+
+```
+GET    /api/v1/users/:id      # Get user
+PUT    /api/v1/users/:id      # Update user
+DELETE /api/v1/users/:id      # Delete user
+```
+
+### Subscriptions (authenticated)
+
+```
+GET    /api/v1/subscriptions           # List all subscriptions
+POST   /api/v1/subscriptions           # Create subscription
+GET    /api/v1/subscriptions/:id       # Get subscription
+GET    /api/v1/subscriptions/user/:id  # Get user's subscriptions
+PUT    /api/v1/subscriptions/:id/cancel # Cancel subscription
+DELETE /api/v1/subscriptions/:id       # Delete subscription
+```
+
+---
+
+## Documentation Structure
+
+This project uses multiple documentation files to keep concerns separated:
+
+| File | Purpose |
+|------|---------|
+| [README.md](README.md) | High-level overview, architecture, quick start |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Technical reference for internals—start with [Quick Reference](docs/ARCHITECTURE.md#quick-reference) and [Design Tradeoffs](docs/ARCHITECTURE.md#design-tradeoffs) |
+| [CONFIGURATION.md](docs/CONFIGURATION.md) | Configuration reference, environment variables |
+| [CONTRIBUTING.md](docs/CONTRIBUTING.md) | Development setup, code style, PR process |
+
+### ARCHITECTURE.md Quick Links
+
+| Section | What You'll Find |
+|---------|------------------|
+| [Quick Reference](docs/ARCHITECTURE.md#quick-reference) | Lookup tables for status values, error codes, file locations |
+| [Request Flow](docs/ARCHITECTURE.md#request-flow) | How HTTP requests traverse the system |
+| [Repository Pattern](docs/ARCHITECTURE.md#repository-pattern) | Interface design and MongoDB implementation |
+| [Error Handling](docs/ARCHITECTURE.md#error-handling-strategy) | AppError structure and error propagation |
+| [Authentication Flow](docs/ARCHITECTURE.md#authentication-flow) | JWT tokens, middleware, refresh flow |
+| [Scheduler Internals](docs/ARCHITECTURE.md#scheduler-internals) | Polling, task types, deduplication, retries |
+| [Design Tradeoffs](docs/ARCHITECTURE.md#design-tradeoffs) | Why MongoDB, asynq, chi |
+| [Testing Strategy](docs/ARCHITECTURE.md#testing-strategy) | Unit, integration, E2E approaches |
+
+---
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+MIT — see [LICENSE](LICENSE) for details.

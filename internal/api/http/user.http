@@ -1,0 +1,56 @@
+# User API - User management endpoints.
+# Requires authentication via Bearer token.
+# Note: User registration is handled via the auth controller.
+
+@baseUrl = http://localhost:8080/api/v1/users
+@accessToken = YOUR_ACCESS_TOKEN_HERE
+@userId = YOUR_USER_ID_HERE
+
+###############################################################################
+# READ
+###############################################################################
+
+### Get user by ID
+GET {{baseUrl}}/{{userId}}
+Authorization: Bearer {{accessToken}}
+
+###############################################################################
+# UPDATE
+###############################################################################
+
+### Update user profile
+PUT {{baseUrl}}/{{userId}}
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "name": "John Updated",
+  "email": "john.updated@example.com"
+}
+
+### Update user password
+PUT {{baseUrl}}/{{userId}}
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "currentPassword": "securePassword123",
+  "newPassword": "newSecurePassword456"
+}
+
+###############################################################################
+# DELETE
+###############################################################################
+
+### Delete user
+DELETE {{baseUrl}}/{{userId}}
+Authorization: Bearer {{accessToken}}
+
+###############################################################################
+# LIST
+###############################################################################
+
+### Get all users
+# TODO: This endpoint may require admin privileges based on implementation.
+GET {{baseUrl}}/
+Authorization: Bearer {{accessToken}}

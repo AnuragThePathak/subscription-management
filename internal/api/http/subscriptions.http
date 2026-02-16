@@ -1,0 +1,61 @@
+# Subscriptions API - CRUD operations for subscription management.
+# Requires authentication via Bearer token.
+
+@baseUrl = http://localhost:8080/api/v1/subscriptions
+@accessToken = YOUR_ACCESS_TOKEN_HERE
+@subscriptionId = YOUR_SUBSCRIPTION_ID_HERE
+@userId = YOUR_USER_ID_HERE
+
+###############################################################################
+# CREATE
+###############################################################################
+
+### Create a new subscription
+POST {{baseUrl}}/
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "name": "Netflix",
+  "price": 1499,
+  "currency": "USD",
+  "frequency": "monthly",
+  "category": "entertainment"
+}
+
+###############################################################################
+# READ
+###############################################################################
+
+### Get subscription by ID
+GET {{baseUrl}}/{{subscriptionId}}
+Authorization: Bearer {{accessToken}}
+
+### Get subscriptions by user ID
+GET {{baseUrl}}/user/{{userId}}
+Authorization: Bearer {{accessToken}}
+
+###############################################################################
+# UPDATE
+###############################################################################
+
+### Cancel a subscription
+PUT {{baseUrl}}/{{subscriptionId}}/cancel
+Authorization: Bearer {{accessToken}}
+
+###############################################################################
+# DELETE
+###############################################################################
+
+### Delete a subscription
+DELETE {{baseUrl}}/{{subscriptionId}}
+Authorization: Bearer {{accessToken}}
+
+###############################################################################
+# LIST
+###############################################################################
+
+### Get all subscriptions
+# TODO: This endpoint may require admin privileges based on implementation.
+GET {{baseUrl}}/
+Authorization: Bearer {{accessToken}}

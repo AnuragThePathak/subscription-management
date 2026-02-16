@@ -251,7 +251,7 @@ Each layer handles errors differently:
 
 **Business invariants:**
 
-1. A subscription cannot be deleted if any billing has occurred (must cancel instead)
+1. Only cancelled subscriptions can be hard deleted
 2. Cancelled subscriptions remain usable until `ValidTill`
 3. Only active subscriptions are auto-renewed
 4. Refunds are only possible if the current billing period hasn't started
@@ -351,10 +351,13 @@ type AppError interface {
 
 ```
 Repository Error          Service Error            Controller Response
-────────────────          ─────────────            ───────────────────
-mongo.ErrNoDocuments  →   NotFoundError       →   {"error": "...", "code": "NOT_FOUND"}
-DuplicateKeyError     →   ConflictError       →   {"error": "...", "code": "CONFLICT"}
+────────────────          ─────────────            ─────────────────────────────────────────────
+mongo.ErrNoDocuments  →   NotFoundError       →   HTTP 404 + {"error": "..."} (optionally code)
+DuplicateKeyError     →   ConflictError       →   HTTP 409 + {"error": "..."} (optionally code)
 ```
+
+The HTTP status code is the canonical signal for error class.
+The JSON body always includes `error` and may include `code` depending on response wiring.
 
 ---
 
@@ -402,10 +405,10 @@ Client                                    Server
     │                                         │
     │                          Validate refresh token
     │                          Generate new access token
-    │                          (refresh token unchanged)
+    │                          Generate new refresh token
     │                                         │
     │◄────────────────────────────────────────│
-    │  { accessToken: "...", expiresAt: "..." }
+    │  { accessToken: "...", refreshToken: "...", expiresAt: "..." }
 ```
 
 ---
@@ -598,7 +601,7 @@ func (s *subscriptionService) GetSubscriptionByID(
 - Lightweight, stdlib-compatible
 - Middleware chaining without magic
 - URL parameter parsing
-- No external dependencies beyond net/http
+- Small dependency surface on top of net/http (chi router + middleware stack)
 
 ---
 

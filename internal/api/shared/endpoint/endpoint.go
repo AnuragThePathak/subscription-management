@@ -32,12 +32,15 @@ func ServeRequest(req InternalRequest) {
 	if req.ReqBodyObj != nil && !readRequestBody(req.W, req.R, req.ReqBodyObj) {
 		return
 	}
+	if req.SuccessCode == 0 {
+		slog.Warn("SuccessCode not set, defaulting to 200")
+		req.SuccessCode = http.StatusOK
+	}
 
 	respBodyObj, err := req.EndpointLogic()
 	if err != nil {
 		slog.Debug("Request failed", slog.String("error", err.Error()))
-		var appErr apperror.AppError
-		if errors.As(err, &appErr) {
+		if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 			WriteAPIResponse(req.W, appErr.Status(), map[string]string{"error": appErr.Message()})
 		} else {
 			WriteAPIResponse(req.W, http.StatusInternalServerError, nil)
@@ -54,8 +57,8 @@ func WriteAPIResponse(w http.ResponseWriter, statusCode int, res any) {
 	w.WriteHeader(statusCode)
 	if res != nil {
 		if err := json.NewEncoder(w).Encode(res); err != nil {
+			// Headers and status code are already sent; the response cannot be modified at this point.
 			slog.Error("Failed to encode response", slog.Any("error", err))
-			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		}
 	}
 }

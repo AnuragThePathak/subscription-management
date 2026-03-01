@@ -1,9 +1,9 @@
 module github.com/anuragthepathak/subscription-management
 
-go 1.24
+go 1.26
 
 require (
-	github.com/AnuragThePathak/my-go-packages v1.0.0
+	github.com/AnuragThePathak/my-go-packages v1.2.0
 	github.com/go-chi/chi/v5 v5.2.1
 	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
 )

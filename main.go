@@ -183,13 +183,6 @@ func main() {
 			TLSCertPath: cf.Server.TLS.CertPath,
 			TLSKeyPath:  cf.Server.TLS.KeyPath,
 		}
-		if err != nil {
-			slog.Error("Failed to load server configuration",
-				slog.String("component", "main"),
-				slog.Any("error", err),
-			)
-			os.Exit(1)
-		}
 
 		apiServer = srv.NewServer(r, apiserverConfig)
 	}

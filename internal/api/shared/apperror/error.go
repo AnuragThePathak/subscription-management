@@ -1,7 +1,6 @@
 package apperror
 
 import (
-	"errors"
 	"fmt"
 )
 
@@ -29,7 +28,6 @@ type AppError interface {
 	Message() string
 	Status() int
 	Unwrap() error
-	Is(target error) bool
 }
 
 type appError struct {
@@ -58,10 +56,7 @@ func (e *appError) Status() int {
 	return e.status
 }
 
+// TODO: add comments
 func (e *appError) Unwrap() error {
 	return e.err
-}
-
-func (e *appError) Is(target error) bool {
-	return errors.Is(e, target)
 }

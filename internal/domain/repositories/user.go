@@ -51,7 +51,7 @@ func (uc *userRepository) Create(ctx context.Context, user *models.User) (*model
 	// Insert into database
 	if _, err := uc.collection.InsertOne(ctx, user); err != nil {
 		if mongo.IsDuplicateKeyError(err) {
-			return nil, apperror.NewConflictError("Failed to generate a unique user ID")
+			return nil, apperror.NewConflictError("Email already exists")
 		}
 		return nil, apperror.NewDBError(err)
 	}

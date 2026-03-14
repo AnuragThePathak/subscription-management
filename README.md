@@ -76,7 +76,7 @@ A subscription moves through well-defined states with clear transition rules:
 │        │ user cancels                                            │
 │        ▼                                                         │
 │   ┌────────────┐     validity ends     ┌─────────┐               │
-│   │ CANCELLED  │ ─────────────────────►│ EXPIRED │               │
+│   │ CANCELED   │ ─────────────────────►│ EXPIRED │               │
 │   └────────────┘                       └─────────┘               │
 │                                                                  │
 └──────────────────────────────────────────────────────────────────┘
@@ -88,15 +88,15 @@ A subscription moves through well-defined states with clear transition rules:
 |--------|----------|
 | **Create** | Subscription starts `active`, validity set based on billing frequency |
 | **Auto-renew** | Scheduler renews active subscriptions before billing period ends, creates billing record, sends confirmation email |
-| **Cancel** | Marks subscription `cancelled` but remains valid until current period ends—no prorated refund mid-cycle |
-| **Expire** | Cancelled subscriptions transition to `expired` once validity ends |
-| **Delete** | Hard delete is permitted only for `cancelled` subscriptions |
+| **Cancel** | Marks subscription `canceled` but remains valid until current period ends—no prorated refund mid-cycle |
+| **Expire** | Canceled subscriptions transition to `expired` once validity ends |
+| **Delete** | Hard delete is permitted only for `canceled` subscriptions |
 
 **Cancellation nuances:**
 
-- A cancelled subscription with remaining validity continues to work until `ValidTill`
+- A canceled subscription with remaining validity continues to work until `ValidTill`
 - Refunds are only processed if the current billing period hasn't started yet
-- The scheduler automatically marks cancelled subscriptions as expired after their valid period ends
+- The scheduler automatically marks canceled subscriptions as expired after their valid period ends
 
 > For the full state machine diagram, see [ARCHITECTURE.md → Domain Model](docs/ARCHITECTURE.md#domain-model)
 
@@ -141,7 +141,7 @@ Time-sensitive operations (renewals, reminders, expirations) are handled by a ba
 - Consumes tasks from Redis queue
 - Handles reminder notifications (configurable days before renewal: e.g., 7, 3, 1)
 - Executes automatic renewals (creates billing records, extends validity, sends confirmation)
-- Marks cancelled subscriptions as expired when validity ends
+- Marks canceled subscriptions as expired when validity ends
 
 **Why this design:**
 
@@ -268,7 +268,7 @@ POST   /api/v1/subscriptions           # Create subscription
 GET    /api/v1/subscriptions/:id       # Get subscription
 GET    /api/v1/subscriptions/user/:id  # Get user's subscriptions
 PUT    /api/v1/subscriptions/:id/cancel # Cancel subscription
-DELETE /api/v1/subscriptions/:id       # Delete subscription (cancelled only)
+DELETE /api/v1/subscriptions/:id       # Delete subscription (canceled only)
 ```
 
 ---

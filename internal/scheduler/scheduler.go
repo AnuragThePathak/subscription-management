@@ -259,8 +259,8 @@ func (s *SubscriptionScheduler) getSubscriptionsDueForRenewal(ctx context.Contex
 
 // New method to get subscriptions that need to be marked as expired
 func (s *SubscriptionScheduler) getSubscriptionsDueForExpiration(ctx context.Context) ([]*models.Subscription, error) {
-	// Get cancelled subscriptions that are past their validity period but not marked as expired yet
-	return s.subscriptionService.FetchCancelledExpiredSubscriptionsInternal(ctx)
+	// Get canceled subscriptions that are past their validity period but not marked as expired yet
+	return s.subscriptionService.FetchCanceledExpiredSubscriptionsInternal(ctx)
 }
 
 // scheduleReminderTask creates and enqueues a reminder task.

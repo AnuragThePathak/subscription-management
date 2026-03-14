@@ -26,8 +26,8 @@ type SubscriptionServiceInternal interface {
 	GetUpcomingRenewalsInternal(context.Context, []int) ([]*models.Subscription, error)
 	FetchSubscriptionByIDInternal(context.Context, bson.ObjectID) (*models.Subscription, error)
 	FetchSubscriptionsDueForRenewalInternal(context.Context, time.Time, time.Time) ([]*models.Subscription, error)
-	FetchCancelledExpiredSubscriptionsInternal(context.Context) ([]*models.Subscription, error)
-	MarkCancelledSubscriptionAsExpiredInternal(context.Context, bson.ObjectID) error
+	FetchCanceledExpiredSubscriptionsInternal(context.Context) ([]*models.Subscription, error)
+	MarkCanceledSubscriptionAsExpiredInternal(context.Context, bson.ObjectID) error
 }
 
 type SubscriptionService interface {
@@ -161,7 +161,7 @@ func (s *subscriptionService) DeleteSubscription(ctx context.Context, id string,
 	}
 
 	// Check if the subscription is active
-	if subscription.Status != models.Cancelled {
+	if subscription.Status != models.Canceled {
 		return apperror.NewConflictError("You can only delete expired subscriptions")
 	}
 
@@ -221,7 +221,7 @@ func (s *subscriptionService) CancelSubscription(ctx context.Context, id string,
 	}
 
 	// Update the subscription status
-	subscription.Status = models.Cancelled
+	subscription.Status = models.Canceled
 	subscription.UpdatedAt = now
 
 	return s.subscriptionRepository.Update(ctx, subscription)
@@ -297,18 +297,18 @@ func (s *subscriptionService) FetchSubscriptionsDueForRenewalInternal(ctx contex
 	return s.subscriptionRepository.GetSubscriptionsDueForRenewal(ctx, startTime, endTime)
 }
 
-func (s *subscriptionService) FetchCancelledExpiredSubscriptionsInternal(ctx context.Context) ([]*models.Subscription, error) {
-	return s.subscriptionRepository.GetCancelledExpiredSubscriptions(ctx)
+func (s *subscriptionService) FetchCanceledExpiredSubscriptionsInternal(ctx context.Context) ([]*models.Subscription, error) {
+	return s.subscriptionRepository.GetCanceledExpiredSubscriptions(ctx)
 }
 
-func (s *subscriptionService) MarkCancelledSubscriptionAsExpiredInternal(ctx context.Context, id bson.ObjectID) error {
-	slog.Debug("Marking cancelled subscriptions as expired")
+func (s *subscriptionService) MarkCanceledSubscriptionAsExpiredInternal(ctx context.Context, id bson.ObjectID) error {
+	slog.Debug("Marking canceled subscriptions as expired")
 	subscription, err := s.subscriptionRepository.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
-	if subscription.Status != models.Cancelled {
-		return apperror.NewConflictError("Only cancelled subscriptions can be marked as expired")
+	if subscription.Status != models.Canceled {
+		return apperror.NewConflictError("Only canceled subscriptions can be marked as expired")
 	}
 	subscription.Status = models.Expired
 	subscription.UpdatedAt = time.Now()

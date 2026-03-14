@@ -25,8 +25,8 @@ This section provides lookup tables for common values and types. Use this when y
 
 | Status | Meaning | Transitions To |
 |--------|---------|----------------|
-| `active` | Currently valid, will auto-renew | `cancelled` (user action) |
-| `cancelled` | Will not renew, but still valid until `ValidTill` | `expired` (automatic) |
+| `active` | Currently valid, will auto-renew | `canceled` (user action) |
+| `canceled` | Will not renew, but still valid until `ValidTill` | `expired` (automatic) |
 | `expired` | No longer valid | (terminal state) |
 
 ### Billing Frequencies
@@ -225,12 +225,12 @@ Each layer handles errors differently:
                            └──────────────────┬───────────────────┘
                                               │
                                               │ user cancels
-                                              │ (marks cancelled,
+                                              │ (marks canceled,
                                               │  ValidTill unchanged)
                                               ▼
                            ┌──────────────────────────────────────┐
                            │                                      │
-                           │            CANCELLED                 │
+                           │            CANCELED                  │
                            │                                      │
                            │  (still valid until ValidTill)       │
                            │  (no auto-renewal scheduled)         │
@@ -251,8 +251,8 @@ Each layer handles errors differently:
 
 **Business invariants:**
 
-1. Only cancelled subscriptions can be hard deleted
-2. Cancelled subscriptions remain usable until `ValidTill`
+1. Only canceled subscriptions can be hard deleted
+2. Canceled subscriptions remain usable until `ValidTill`
 3. Only active subscriptions are auto-renewed
 4. Refunds are only possible if the current billing period hasn't started
 
@@ -284,7 +284,7 @@ type SubscriptionRepository interface {
     GetActiveSubscriptions(context.Context) ([]*models.Subscription, error)
     GetSubscriptionsDueForReminder(context.Context, []int) ([]*models.Subscription, error)
     GetSubscriptionsDueForRenewal(context.Context, time.Time, time.Time) ([]*models.Subscription, error)
-    GetCancelledExpiredSubscriptions(context.Context) ([]*models.Subscription, error)
+    GetCanceledExpiredSubscriptions(context.Context) ([]*models.Subscription, error)
     Update(ctx context.Context, subscription *models.Subscription) (*models.Subscription, error)
     Delete(ctx context.Context, id bson.ObjectID) error
 }
@@ -444,7 +444,7 @@ func (s *SubscriptionScheduler) Start(ctx context.Context) error {
 |------|---------|--------|
 | `subscription:reminder` | N days before renewal | Send reminder email |
 | `subscription:renewal` | 8 hours before ValidTill | Extend ValidTill, create Bill, send confirmation |
-| `subscription:expiration` | ValidTill passed (cancelled) | Mark status as `expired` |
+| `subscription:expiration` | ValidTill passed (canceled) | Mark status as `expired` |
 
 ### Task Deduplication
 
@@ -517,7 +517,7 @@ type SubscriptionServiceExternal interface {
 type SubscriptionServiceInternal interface {
     RenewSubscriptionInternal(ctx, id) (*Subscription, error)
     FetchSubscriptionsDueForRenewalInternal(ctx, start, end) ([]*Subscription, error)
-    MarkCancelledSubscriptionAsExpiredInternal(ctx, id) error
+    MarkCanceledSubscriptionAsExpiredInternal(ctx, id) error
     // ... scheduler-facing operations
 }
 

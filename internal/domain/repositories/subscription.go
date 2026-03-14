@@ -8,9 +8,9 @@ import (
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/apperror"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/anuragthepathak/subscription-management/internal/lib"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 type SubscriptionRepository interface {
@@ -21,7 +21,7 @@ type SubscriptionRepository interface {
 	GetActiveSubscriptions(context.Context) ([]*models.Subscription, error)
 	GetSubscriptionsDueForReminder(context.Context, []int) ([]*models.Subscription, error)
 	GetSubscriptionsDueForRenewal(context.Context, time.Time, time.Time) ([]*models.Subscription, error)
-	GetCancelledExpiredSubscriptions(context.Context) ([]*models.Subscription, error)
+	GetCanceledExpiredSubscriptions(context.Context) ([]*models.Subscription, error)
 	Update(ctx context.Context, subscription *models.Subscription) (*models.Subscription, error)
 	Delete(ctx context.Context, id bson.ObjectID) error
 }
@@ -128,9 +128,9 @@ func (r *subscriptionRepository) GetSubscriptionsDueForRenewal(ctx context.Conte
 	return lib.FindMany[models.Subscription](ctx, r.collection, filter, opts)
 }
 
-func (r *subscriptionRepository) GetCancelledExpiredSubscriptions(ctx context.Context) ([]*models.Subscription, error) {
+func (r *subscriptionRepository) GetCanceledExpiredSubscriptions(ctx context.Context) ([]*models.Subscription, error) {
 	filter := bson.M{
-		"status": models.Cancelled,
+		"status": models.Canceled,
 		"valid_till": bson.M{
 			"$lt": time.Now(),
 		},

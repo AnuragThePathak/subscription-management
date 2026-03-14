@@ -114,24 +114,24 @@ func (w *ReminderWorker) handleSubscriptionRenewal(ctx context.Context, task *as
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
 		return fmt.Errorf("failed to unmarshal renewal task payload: %v", err)
 	}
-	
+
 	slog.Info("Processing subscription renewal",
 		slog.String("component", "worker"),
 		slog.String("subscription_id", payload.SubscriptionID),
 	)
-	
+
 	// Parse the subscription ID
 	subscriptionID, err := bson.ObjectIDFromHex(payload.SubscriptionID)
 	if err != nil {
 		return fmt.Errorf("invalid subscription ID: %v", err)
 	}
-	
+
 	// Fetch the subscription from the database
 	subscription, err := w.subscriptionService.FetchSubscriptionByIDInternal(ctx, subscriptionID)
 	if err != nil {
 		return fmt.Errorf("failed to fetch subscription: %v", err)
 	}
-	
+
 	// Ensure the subscription is still active
 	if subscription.Status != models.Active {
 		slog.Info("Skipping renewal for non-active subscription",
@@ -141,7 +141,7 @@ func (w *ReminderWorker) handleSubscriptionRenewal(ctx context.Context, task *as
 		)
 		return nil
 	}
-	
+
 	// Check if the renewal date is within our window (now to next 4 hours)
 	now := time.Now()
 	renewalWindow := now.Add(time.Hour * RenewalHoursBeforeDay)
@@ -153,20 +153,20 @@ func (w *ReminderWorker) handleSubscriptionRenewal(ctx context.Context, task *as
 		)
 		return nil
 	}
-	
+
 	// Process the automatic renewal
 	renewedSubscription, err := w.subscriptionService.RenewSubscriptionInternal(ctx, subscriptionID)
 	if err != nil {
 		return fmt.Errorf("failed to renew subscription: %v", err)
 	}
-	
+
 	slog.Info("Successfully renewed subscription",
 		slog.String("component", "worker"),
 		slog.String("subscription_id", payload.SubscriptionID),
 		slog.String("new_subscription_id", renewedSubscription.ID.Hex()),
 		slog.String("new_renewal_date", renewedSubscription.ValidTill.Format(time.RFC3339)),
 	)
-	
+
 	// Send a confirmation email to the user
 	user, err := w.userService.FetchUserByIDInternal(ctx, subscription.UserID)
 	if err != nil {
@@ -194,7 +194,7 @@ func (w *ReminderWorker) handleSubscriptionRenewal(ctx context.Context, task *as
 			// Continue execution even if email fails
 		}
 	}
-	
+
 	return nil
 }
 
@@ -203,34 +203,34 @@ func (w *ReminderWorker) handleSubscriptionExpiration(ctx context.Context, task 
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
 		return fmt.Errorf("failed to unmarshal expiration task payload: %v", err)
 	}
-	
+
 	slog.Info("Processing subscription expiration",
 		slog.String("component", "worker"),
 		slog.String("subscription_id", payload.SubscriptionID),
 	)
-	
+
 	// Parse the subscription ID
 	subscriptionID, err := bson.ObjectIDFromHex(payload.SubscriptionID)
 	if err != nil {
 		return fmt.Errorf("invalid subscription ID: %v", err)
 	}
-	
+
 	// Fetch the subscription from the database
 	subscription, err := w.subscriptionService.FetchSubscriptionByIDInternal(ctx, subscriptionID)
 	if err != nil {
 		return fmt.Errorf("failed to fetch subscription: %v", err)
 	}
-	
-	// Ensure the subscription is cancelled and past validity period
-	if subscription.Status != models.Cancelled {
-		slog.Info("Skipping expiration for non-cancelled subscription",
+
+	// Ensure the subscription is canceled and past validity period
+	if subscription.Status != models.Canceled {
+		slog.Info("Skipping expiration for non-canceled subscription",
 			slog.String("component", "worker"),
 			slog.String("subscription_id", payload.SubscriptionID),
 			slog.String("status", string(subscription.Status)),
 		)
 		return nil
 	}
-	
+
 	// Double-check that the subscription is past its validity date
 	now := time.Now()
 	if subscription.ValidTill.After(now) {
@@ -241,19 +241,19 @@ func (w *ReminderWorker) handleSubscriptionExpiration(ctx context.Context, task 
 		)
 		return nil
 	}
-	
+
 	// Update the subscription status to Expired
-	if err := w.subscriptionService.MarkCancelledSubscriptionAsExpiredInternal(ctx, subscriptionID); err != nil {
+	if err := w.subscriptionService.MarkCanceledSubscriptionAsExpiredInternal(ctx, subscriptionID); err != nil {
 		return fmt.Errorf("failed to mark subscription as expired: %v", err)
 	}
-	
+
 	slog.Info("Successfully marked subscription as expired",
 		slog.String("component", "worker"),
 		slog.String("subscription_id", payload.SubscriptionID),
 		slog.String("previous_status", string(subscription.Status)),
 		slog.String("new_status", string(models.Expired)),
 	)
-	
+
 	return nil
 }
 

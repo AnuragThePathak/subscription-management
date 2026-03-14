@@ -63,7 +63,7 @@ func (es *EmailSender) SendReminderEmail(ctx context.Context, toEmail string, us
 	}
 
 	// Format price string.
-	priceStr := fmt.Sprintf("%s %.2d (%s)",
+	priceStr := fmt.Sprintf("%s %d (%s)",
 		subscription.Currency,
 		subscription.Price,
 		subscription.Frequency,

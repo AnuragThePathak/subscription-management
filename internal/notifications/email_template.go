@@ -95,19 +95,19 @@ func GetTemplates() map[TemplateType]EmailTemplate {
 }
 
 // FindTemplateByDays returns the appropriate template based on days before renewal.
-func FindTemplateByDays(daysBefore int) (TemplateType, bool) {
+func FindTemplateByDays(daysBefore int) TemplateType {
 	switch daysBefore {
 	case 7:
-		return SevenDaysReminder, true
+		return SevenDaysReminder
 	case 5:
-		return FiveDaysReminder, true
-	case 3: // Changed from 2 to 3
-		return ThreeDaysReminder, true
+		return FiveDaysReminder
+	case 3:
+		return ThreeDaysReminder
 	case 1:
-		return OneDayReminder, true
+		return OneDayReminder
 	default:
 		// For any other number of days, use the custom template
-		return CustomReminder, true
+		return CustomReminder
 	}
 }
 

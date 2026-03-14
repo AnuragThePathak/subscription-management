@@ -50,10 +50,7 @@ func (es *EmailSender) SendReminderEmail(ctx context.Context, toEmail string, us
 	}
 
 	// Find appropriate template.
-	templateType, found := FindTemplateByDays(daysBefore)
-	if !found {
-		return fmt.Errorf("no template found for %d days before reminder", daysBefore)
-	}
+	templateType:= FindTemplateByDays(daysBefore)
 
 	// Get the template.
 	templates := GetTemplates()

@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -104,12 +105,15 @@ func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
 	slog.Info("Polling for subscriptions requiring reminders and renewals",
 		slog.String("component", "scheduler"))
 
+	var errs []error
+
 	// Handle reminder tasks
 	if err := s.handleReminderTasks(ctx); err != nil {
 		slog.Error("Failed to handle reminder tasks",
 			slog.String("component", "scheduler"),
 			slog.Any("error", err),
 		)
+		errs = append(errs, err)
 	}
 
 	// Handle renewal tasks
@@ -118,6 +122,7 @@ func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
 			slog.String("component", "scheduler"),
 			slog.Any("error", err),
 		)
+		errs = append(errs, err)
 	}
 
 	// Handle expiration tasks
@@ -126,9 +131,10 @@ func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
 			slog.String("component", "scheduler"),
 			slog.Any("error", err),
 		)
+		errs = append(errs, err)
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 // handleReminderTasks checks for subscriptions needing reminders and schedules tasks.

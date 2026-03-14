@@ -2,6 +2,7 @@ package lib
 
 import (
 	"context"
+	"errors"
 
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/apperror"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -13,7 +14,7 @@ func FindOne[T any](ctx context.Context, collection *mongo.Collection, filter bs
 	var result T
 	err := collection.FindOne(ctx, filter, opts...).Decode(&result)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
+		if errors.Is(err, mongo.ErrNoDocuments) {
 			return nil, apperror.NewNotFoundError("Document not found")
 		}
 		return nil, apperror.NewDBError(err)

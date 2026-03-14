@@ -331,7 +331,7 @@ func (s *SubscriptionScheduler) scheduleRenewalTask(subscription *models.Subscri
 		task,
 		asynq.Unique(24*time.Hour),    // Prevent duplicate pending tasks.
 		asynq.Retention(24*time.Hour), // Keep task for 24h after processing.
-		asynq.Timeout(45*time.Second), // Handler must finish in 60s.
+		asynq.Timeout(45*time.Second), // Handler must finish in 45s.
 		asynq.MaxRetry(5),             // Retry up to 5 times if failed.
 		asynq.ProcessAt(processAt),
 	)

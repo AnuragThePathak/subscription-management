@@ -65,11 +65,7 @@ func (c *authController) login(w http.ResponseWriter, r *http.Request) {
 
 // refreshToken handles token refresh requests.
 func (c *authController) refreshToken(w http.ResponseWriter, r *http.Request) {
-	type refreshRequest struct {
-		RefreshToken string `json:"refreshToken" validate:"required"`
-	}
-
-	req := refreshRequest{}
+	req := models.RefreshRequest{}
 
 	endpoint.ServeRequest(
 		endpoint.InternalRequest{

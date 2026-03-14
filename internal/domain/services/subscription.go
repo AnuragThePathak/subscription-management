@@ -168,14 +168,14 @@ func (s *subscriptionService) DeleteSubscription(ctx context.Context, id string,
 	return s.subscriptionRepository.Delete(ctx, subscriptionID)
 }
 
-func (s *subscriptionService) CancelSubscription(ctx context.Context, id string, calimedUserID string) (*models.Subscription, error) {
+func (s *subscriptionService) CancelSubscription(ctx context.Context, id string, claimedUserID string) (*models.Subscription, error) {
 	slog.Debug("Canceling subscription", slog.String("subscriptionID", id))
 	subscriptionID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return nil, apperror.NewBadRequestError("Invalid subscription ID")
 	}
 
-	userID, err := bson.ObjectIDFromHex(calimedUserID)
+	userID, err := bson.ObjectIDFromHex(claimedUserID)
 	if err != nil {
 		return nil, apperror.NewUnauthorizedError("Invalid user ID")
 	}

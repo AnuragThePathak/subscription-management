@@ -160,8 +160,8 @@ func (s *subscriptionService) DeleteSubscription(ctx context.Context, id string,
 		return apperror.NewForbiddenError("You are not allowed to delete this subscription")
 	}
 
-	// Check if the subscription is active
-	if subscription.Status != models.Canceled {
+	// Check if the subscription is active or still in billing period
+	if subscription.Status != models.Expired {
 		return apperror.NewConflictError("You can only delete expired subscriptions")
 	}
 

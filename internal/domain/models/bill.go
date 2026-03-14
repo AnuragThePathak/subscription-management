@@ -82,8 +82,8 @@ type BillResponse struct {
 	UpdatedAt      time.Time     `json:"updatedAt"`
 }
 
-func (b *Bill) ToResponse() BillResponse {
-	return BillResponse{
+func (b *Bill) ToResponse() *BillResponse {
+	return &BillResponse{
 		ID:             b.ID.Hex(),
 		Amount:         b.Amount,
 		StartDate:      b.StartDate,

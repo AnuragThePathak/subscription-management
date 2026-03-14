@@ -19,11 +19,11 @@ func DatabaseConnection(dbConfig DatabaseConfig) (*adapters.Database, error) {
 	db := adapters.Database{}
 	var err error
 	if db.Client, err = mongo.Connect(dbClientOpts); err != nil {
-		slog.Error("Failed to connect to MongoDB", slog.String("url", dbConfig.URL), slog.String("error", err.Error()))
+		slog.Error("Failed to initialize MongoDB client", slog.String("url", dbConfig.URL), slog.String("error", err.Error()))
 		return nil, err
 	}
 	db.DB = db.Client.Database(dbConfig.Name)
-	slog.Info("Connected to MongoDB", slog.String("database", dbConfig.Name))
+	slog.Info("Initialized MongoDB client", slog.String("database", dbConfig.Name))
 	return &db, nil
 }
 

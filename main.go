@@ -47,10 +47,17 @@ func main() {
 		slog.Int("port", cf.Server.Port),
 	)
 
-	// Connect to the database
+	// Initialize the database client
 	var database *adapters.Database
 	{
 		if database, err = config.DatabaseConnection(cf.Database); err != nil {
+			slog.Error("Failed to initialize database client",
+				slog.String("component", "main"),
+				slog.Any("error", err),
+			)
+			os.Exit(1)
+		}
+		if err = database.Ping(ctx); err != nil {
 			slog.Error("Failed to connect to database",
 				slog.String("component", "main"),
 				slog.Any("error", err),

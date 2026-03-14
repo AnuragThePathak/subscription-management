@@ -23,3 +23,13 @@ func (db *Database) Shutdown(ctx context.Context) error {
 	slog.Info("MongoDB client disconnected successfully", slog.String("component", "database"))
 	return nil
 }
+
+// Ping checks the connection to the MongoDB server.
+func (db *Database) Ping(ctx context.Context) error {
+	if err := db.Client.Ping(ctx, nil); err != nil {
+		slog.Error("MongoDB ping failed", slog.String("component", "database"), slog.Any("error", err))
+		return err
+	}
+	slog.Debug("MongoDB ping successful", slog.String("component", "database"))
+	return nil
+}

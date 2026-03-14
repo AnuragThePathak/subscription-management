@@ -121,10 +121,10 @@ func main() {
 			cf.Scheduler.ReminderDays,
 		)
 		go func() {
-			if err = sch.Start(ctx); err != nil && err != context.Canceled {
+			if startErr := sch.Start(ctx); startErr != nil && startErr != context.Canceled {
 				slog.Error("Scheduler failed",
 					slog.String("component", "main"),
-					slog.Any("error", err),
+					slog.Any("error", startErr),
 				)
 			}
 		}()
@@ -142,10 +142,10 @@ func main() {
 			cf.QueueWorker.Concurrency,
 		)
 		go func() {
-			if err = worker.Start(ctx); err != nil && err != context.Canceled {
+			if startErr := worker.Start(ctx); startErr != nil && startErr != context.Canceled {
 				slog.Error("Worker failed",
 					slog.String("component", "main"),
-					slog.Any("error", err),
+					slog.Any("error", startErr),
 				)
 			}
 		}()

@@ -11,8 +11,18 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
+// RequestHandler holds shared dependencies for processing HTTP requests.
+type RequestHandler struct {
+	validate *validator.Validate
+}
+
+// NewRequestHandler creates a new RequestHandler with the provided validator.
+func NewRequestHandler(validate *validator.Validate) *RequestHandler {
+	return &RequestHandler{validate: validate}
+}
+
 // readRequestBody decodes and validates the JSON request body.
-func readRequestBody(w http.ResponseWriter, r *http.Request, bodyObj any) bool {
+func (h *RequestHandler) readRequestBody(w http.ResponseWriter, r *http.Request, bodyObj any) bool {
 	if bodyObj == nil {
 		return true
 	}
@@ -20,7 +30,7 @@ func readRequestBody(w http.ResponseWriter, r *http.Request, bodyObj any) bool {
 		WriteAPIResponse(w, http.StatusBadRequest, map[string]string{"error": "Invalid JSON"})
 		return false
 	}
-	if err := validator.New(validator.WithRequiredStructEnabled()).Struct(bodyObj); err != nil {
+	if err := h.validate.Struct(bodyObj); err != nil {
 		WriteAPIResponse(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return false
 	}
@@ -28,8 +38,8 @@ func readRequestBody(w http.ResponseWriter, r *http.Request, bodyObj any) bool {
 }
 
 // ServeRequest processes an HTTP request using the provided InternalRequest configuration.
-func ServeRequest(req InternalRequest) {
-	if req.ReqBodyObj != nil && !readRequestBody(req.W, req.R, req.ReqBodyObj) {
+func (h *RequestHandler) ServeRequest(req InternalRequest) {
+	if !h.readRequestBody(req.W, req.R, req.ReqBodyObj) {
 		return
 	}
 	if req.SuccessCode == 0 {

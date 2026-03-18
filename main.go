@@ -13,12 +13,14 @@ import (
 	"github.com/anuragthepathak/subscription-management/internal/api/controllers"
 	"github.com/anuragthepathak/subscription-management/internal/api/middlewares"
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/config"
+	"github.com/anuragthepathak/subscription-management/internal/api/shared/endpoint"
 	"github.com/anuragthepathak/subscription-management/internal/domain/repositories"
 	"github.com/anuragthepathak/subscription-management/internal/domain/services"
 	"github.com/anuragthepathak/subscription-management/internal/notifications"
 	"github.com/anuragthepathak/subscription-management/internal/scheduler"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-playground/validator/v10"
 	"github.com/go-redis/redis_rate/v10"
 )
 
@@ -161,6 +163,12 @@ func main() {
 			Worker: worker,
 		}
 	}
+
+	var requestHandler *endpoint.RequestHandler
+	{
+		validate := validator.New(validator.WithRequiredStructEnabled())
+		requestHandler = endpoint.NewRequestHandler(validate)
+	}
 	
 	var apiServer adapters.Server
 	{
@@ -171,7 +179,7 @@ func main() {
 		r.Use(middlewares.RateLimiter(appRateLimiterService))
 
 		// Setup routes
-		r.Mount("/api/v1/auth", controllers.NewAuthController(authService, userService))
+		r.Mount("/api/v1/auth", controllers.NewAuthController(authService, userService, requestHandler))
 
 		// Protected routes
 		r.Group(func(r chi.Router) {
@@ -179,8 +187,8 @@ func main() {
 			r.Use(middlewares.Authentication(jwtService))
 
 			// User routes with authentication
-			r.Mount("/api/v1/users", controllers.NewUserController(userService))
-			r.Mount("/api/v1/subscriptions", controllers.NewSubscriptionController(subscriptionService))
+			r.Mount("/api/v1/users", controllers.NewUserController(userService, requestHandler))
+			r.Mount("/api/v1/subscriptions", controllers.NewSubscriptionController(subscriptionService, requestHandler))
 		})
 
 		// Create a new server configuration

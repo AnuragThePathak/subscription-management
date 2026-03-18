@@ -12,11 +12,13 @@ import (
 
 type subscriptionController struct {
 	subscriptionService services.SubscriptionServiceExternal
+	requestHandler      *endpoint.RequestHandler
 }
 
-func NewSubscriptionController(subscriptionService services.SubscriptionServiceExternal) http.Handler {
+func NewSubscriptionController(subscriptionService services.SubscriptionServiceExternal, requestHandler *endpoint.RequestHandler) http.Handler {
 	c := &subscriptionController{
 		subscriptionService,
+		requestHandler,
 	}
 
 	r := chi.NewRouter()
@@ -34,7 +36,7 @@ func (c *subscriptionController) createSubscription(w http.ResponseWriter, r *ht
 	subscription := models.SubscriptionRequest{}
 	userID, _ := lib.GetUserID(r.Context())
 
-	endpoint.ServeRequest(endpoint.InternalRequest{
+	c.requestHandler.ServeRequest(endpoint.InternalRequest{
 		W:          w,
 		R:          r,
 		ReqBodyObj: &subscription,
@@ -46,7 +48,7 @@ func (c *subscriptionController) createSubscription(w http.ResponseWriter, r *ht
 }
 
 func (c *subscriptionController) getAllSubscriptions(w http.ResponseWriter, r *http.Request) {
-	endpoint.ServeRequest(endpoint.InternalRequest{
+	c.requestHandler.ServeRequest(endpoint.InternalRequest{
 		W: w,
 		R: r,
 		EndpointLogic: func() (any, error) {
@@ -60,7 +62,7 @@ func (c *subscriptionController) getSubscriptionByID(w http.ResponseWriter, r *h
 	subscriptionID := chi.URLParam(r, "id")
 	userID, _ := lib.GetUserID(r.Context())
 
-	endpoint.ServeRequest(endpoint.InternalRequest{
+	c.requestHandler.ServeRequest(endpoint.InternalRequest{
 		W: w,
 		R: r,
 		EndpointLogic: func() (any, error) {
@@ -74,7 +76,7 @@ func (c *subscriptionController) deleteSubscription(w http.ResponseWriter, r *ht
 	subscriptionID := chi.URLParam(r, "id")
 	userID, _ := lib.GetUserID(r.Context())
 
-	endpoint.ServeRequest(endpoint.InternalRequest{
+	c.requestHandler.ServeRequest(endpoint.InternalRequest{
 		W: w,
 		R: r,
 		EndpointLogic: func() (any, error) {
@@ -88,7 +90,7 @@ func (c *subscriptionController) getSubscriptionsByUserID(w http.ResponseWriter,
 	id := chi.URLParam(r, "id")
 	userID, _ := lib.GetUserID(r.Context())
 
-	endpoint.ServeRequest(endpoint.InternalRequest{
+	c.requestHandler.ServeRequest(endpoint.InternalRequest{
 		W: w,
 		R: r,
 		EndpointLogic: func() (any, error) {
@@ -102,7 +104,7 @@ func (c *subscriptionController) cancelSubscription(w http.ResponseWriter, r *ht
 	subscriptionID := chi.URLParam(r, "id")
 	userID, _ := lib.GetUserID(r.Context())
 
-	endpoint.ServeRequest(endpoint.InternalRequest{
+	c.requestHandler.ServeRequest(endpoint.InternalRequest{
 		W: w,
 		R: r,
 		EndpointLogic: func() (any, error) {

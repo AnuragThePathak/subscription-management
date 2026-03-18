@@ -10,15 +10,17 @@ import (
 )
 
 type authController struct {
-	authService services.AuthService
-	userService services.UserServiceExternal
+	authService    services.AuthService
+	userService    services.UserServiceExternal
+	requestHandler *endpoint.RequestHandler
 }
 
 // NewAuthController initializes the authentication controller with routes.
-func NewAuthController(authService services.AuthService, userService services.UserServiceExternal) http.Handler {
+func NewAuthController(authService services.AuthService, userService services.UserServiceExternal, requestHandler *endpoint.RequestHandler) http.Handler {
 	c := &authController{
 		authService,
 		userService,
+		requestHandler,
 	}
 
 	r := chi.NewRouter()
@@ -33,7 +35,7 @@ func NewAuthController(authService services.AuthService, userService services.Us
 func (c *authController) createUser(w http.ResponseWriter, r *http.Request) {
 	user := models.UserRequest{}
 
-	endpoint.ServeRequest(
+	c.requestHandler.ServeRequest(
 		endpoint.InternalRequest{
 			W:          w,
 			R:          r,
@@ -50,7 +52,7 @@ func (c *authController) createUser(w http.ResponseWriter, r *http.Request) {
 func (c *authController) login(w http.ResponseWriter, r *http.Request) {
 	loginReq := models.LoginRequest{}
 
-	endpoint.ServeRequest(
+	c.requestHandler.ServeRequest(
 		endpoint.InternalRequest{
 			W:          w,
 			R:          r,
@@ -67,7 +69,7 @@ func (c *authController) login(w http.ResponseWriter, r *http.Request) {
 func (c *authController) refreshToken(w http.ResponseWriter, r *http.Request) {
 	req := models.RefreshRequest{}
 
-	endpoint.ServeRequest(
+	c.requestHandler.ServeRequest(
 		endpoint.InternalRequest{
 			W:          w,
 			R:          r,

@@ -90,7 +90,7 @@ A subscription moves through well-defined states with clear transition rules:
 | **Auto-renew** | Scheduler renews active subscriptions before billing period ends, creates billing record, sends confirmation email |
 | **Cancel** | Marks subscription `canceled` but remains valid until current period ends—no prorated refund mid-cycle |
 | **Expire** | Canceled subscriptions transition to `expired` once validity ends |
-| **Delete** | Hard delete is permitted only for `canceled` subscriptions |
+| **Delete** | Hard delete is permitted only for `expired` subscriptions |
 
 **Cancellation nuances:**
 
@@ -268,7 +268,7 @@ POST   /api/v1/subscriptions           # Create subscription
 GET    /api/v1/subscriptions/:id       # Get subscription
 GET    /api/v1/subscriptions/user/:id  # Get user's subscriptions
 PUT    /api/v1/subscriptions/:id/cancel # Cancel subscription
-DELETE /api/v1/subscriptions/:id       # Delete subscription (canceled only)
+DELETE /api/v1/subscriptions/:id       # Delete subscription (expired only)
 ```
 
 ---

@@ -251,7 +251,7 @@ Each layer handles errors differently:
 
 **Business invariants:**
 
-1. Only canceled subscriptions can be hard deleted
+1. Only expired subscriptions can be hard deleted
 2. Canceled subscriptions remain usable until `ValidTill`
 3. Only active subscriptions are auto-renewed
 4. Refunds are only possible if the current billing period hasn't started

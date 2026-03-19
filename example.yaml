@@ -1,0 +1,48 @@
+server:
+  port: 8080 # Port your server will run on
+  tls:
+    enabled: false # Set to true to enable TLS
+    cert_path: "" # Path to TLS certificate (required if TLS is enabled)
+    key_path: "" # Path to TLS private key (required if TLS is enabled)
+
+database:
+  url: "url" # MongoDB connection URI
+  name: "project" # MongoDB database name
+
+jwt:
+  access_secret: "secret" # Secret used to sign access tokens
+  refresh_secret: "secret" # Secret used to sign refresh tokens
+  access_timeout: 1 # Expiry in hours for access tokens
+  refresh_timeout: 168 # Expiry in hours for refresh tokens (e.g., 7 days)
+  issuer: "subscription-management" # Issuer claim for tokens
+
+rate_limiter:
+  app:
+    rate: 1
+    burst: 5
+    period: "2s"
+
+redis:
+  url: "url"
+  password: ""
+  db: 0
+
+scheduler:
+  interval: "12h"
+  reminder_days: [1, 3, 7] # Days before expiration to send reminders
+
+queue_worker:
+  concurrency: 2 # Number of concurrent workers for processing tasks
+
+email:
+  smtp_host: "host" # SMTP server host
+  smtp_port: 587 # SMTP server port
+  from_email: "no-reply@subscription.com"
+  from_name: "Subscription Management" # Name to display in the "From" field
+  smtp_username: "email"
+  smtp_password: "password" # SMTP server password
+  account_url: "url" # URL for account management
+  support_url: "url" # URL for support
+  
+
+env: "development" # Environment (development, production, etc.)

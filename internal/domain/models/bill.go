@@ -62,13 +62,6 @@ func (b *Bill) Validate() error {
 	return nil
 }
 
-// BillCreateRequest represents the request to create a new bill.
-type BillCreateRequest struct {
-	Amount         float64       `json:"amount" validate:"required,gt=0"`
-	Currency       Currency      `json:"currency" validate:"required"`
-	SubscriptionID bson.ObjectID `json:"subscriptionId" validate:"required"`
-}
-
 // BillResponse represents the response for a bill.
 type BillResponse struct {
 	ID             string        `json:"id"`

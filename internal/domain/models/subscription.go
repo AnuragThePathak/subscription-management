@@ -103,29 +103,6 @@ func (r *SubscriptionRequest) ToModel() *Subscription {
 	}
 }
 
-// SubscriptionUpdateRequest represents the data structure for subscription update API requests.
-type SubscriptionUpdateRequest struct {
-	Name        string    `json:"name,omitempty" validate:"omitempty,min=2,max=100"`
-	Price       int64     `json:"price,omitempty" validate:"omitempty,gt=0"`
-	Currency    Currency  `json:"currency,omitempty"`
-	Frequency   Frequency `json:"frequency,omitempty"`
-	Category    Category  `json:"category,omitempty"`
-	StartDate   time.Time `json:"startDate,omitzero"`
-	RenewalDate time.Time `json:"renewalDate,omitzero"`
-}
-
-// ToModel converts an update request to a Subscription model.
-func (r *SubscriptionUpdateRequest) ToModel() *Subscription {
-	return &Subscription{
-		Name:      r.Name,
-		Price:     r.Price,
-		Currency:  r.Currency,
-		Frequency: r.Frequency,
-		Category:  r.Category,
-		ValidTill: r.RenewalDate,
-	}
-}
-
 // SubscriptionResponse represents the data structure for subscription API responses.
 type SubscriptionResponse struct {
 	ID        string    `json:"id"`

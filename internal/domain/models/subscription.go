@@ -11,8 +11,6 @@ import (
 type Frequency string
 
 const (
-	Daily   Frequency = "daily"
-	Weekly  Frequency = "weekly"
 	Monthly Frequency = "monthly"
 	Yearly  Frequency = "yearly"
 )
@@ -63,7 +61,7 @@ func (s *Subscription) Validate() error {
 	if s.Price <= 0 {
 		return apperror.NewValidationError("price must be greater than 0")
 	}
-	if s.Frequency != Daily && s.Frequency != Weekly && s.Frequency != Monthly && s.Frequency != Yearly {
+	if s.Frequency != Monthly && s.Frequency != Yearly {
 		return apperror.NewValidationError("invalid frequency")
 	}
 	if s.Category != Sports && s.Category != News && s.Category != Entertainment &&

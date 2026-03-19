@@ -8,10 +8,6 @@ import (
 
 func CalcRenewalDate(start time.Time, frequency models.Frequency) time.Time {
 	switch frequency {
-	case models.Daily:
-		return start.AddDate(0, 0, 1)
-	case models.Weekly:
-		return start.AddDate(0, 0, 7)
 	case models.Monthly:
 		// Get original day to preserve
 		originalDay := start.Day()

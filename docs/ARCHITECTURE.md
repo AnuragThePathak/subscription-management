@@ -33,8 +33,6 @@ This section provides lookup tables for common values and types. Use this when y
 
 | Frequency | ValidTill Extension | Use Case |
 |-----------|--------------------|---------|
-| `daily` | +1 day | Testing, trials |
-| `weekly` | +7 days | Short-term subscriptions |
 | `monthly` | +1 month | Standard billing |
 | `yearly` | +1 year | Annual plans |
 
@@ -262,8 +260,6 @@ The `Frequency` type determines how `ValidTill` is calculated on renewal:
 
 | Frequency | Extension |
 |-----------|-----------|
-| `daily` | +1 day |
-| `weekly` | +7 days |
 | `monthly` | +1 month |
 | `yearly` | +1 year |
 

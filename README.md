@@ -4,7 +4,7 @@ A backend service written in Go for managing recurring subscriptions—handling 
 
 ## What This System Does
 
-This service manages the complete lifecycle of user subscriptions: from initial creation through recurring billing cycles to eventual expiration or cancellation. It supports multiple billing frequencies (daily, weekly, monthly, yearly), handles automatic renewals, processes cancellations with proper validity period handling, and sends email notifications for key lifecycle events.
+This service manages the complete lifecycle of user subscriptions: from initial creation through recurring billing cycles to eventual expiration or cancellation. It supports monthly and yearly billing frequencies, handles automatic renewals, processes cancellations with proper validity period handling, and sends email notifications for key lifecycle events.
 
 The system is designed as a learning reference for production-grade backend architecture, emphasizing:
 

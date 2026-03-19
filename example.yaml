@@ -31,9 +31,12 @@ redis:
 scheduler:
   interval: "12h"
   reminder_days: [1, 3, 7] # Days before expiration to send reminders
+  enabled_for_env: ["development", "staging", "production"] # Environments where the scheduler is enabled
 
 queue_worker:
   concurrency: 2 # Number of concurrent workers for processing tasks
+  queue_name: "reminder" # Name of the queue to process tasks from
+  enabled_for_env: ["development", "staging", "production"] # Environments where the worker is enabled
 
 email:
   smtp_host: "host" # SMTP server host

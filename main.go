@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 	"time"
 
@@ -122,45 +123,56 @@ func main() {
 	var schedulerAdapter *adapters.Scheduler
 	var schedulerWorkerAdapter *adapters.SchedulerWorker
 	{
-		sch := scheduler.NewSubscriptionScheduler(
-			subscriptionService,
-			redis.Client,
-			config.QueueRedisConfig(cf.Redis),
-			cf.Scheduler.Interval,
-			cf.Scheduler.ReminderDays,
-		)
-		go func() {
-			if startErr := sch.Start(ctx); startErr != nil && startErr != context.Canceled {
-				slog.Error("Scheduler failed",
-					slog.String("component", "main"),
-					slog.Any("error", startErr),
-				)
-			}
-		}()
+		if slices.Contains(cf.Scheduler.EnabledForEnv, cf.Env) {
+			sch := scheduler.NewSubscriptionScheduler(
+				subscriptionService,
+				redis.Client,
+				config.QueueRedisConfig(cf.Redis),
+				cf.Scheduler.Interval,
+				cf.Scheduler.ReminderDays,
+			)
+			go func() {
+				if startErr := sch.Start(ctx); startErr != nil && startErr != context.Canceled {
+					slog.Error("Scheduler failed",
+						slog.String("component", "main"),
+						slog.Any("error", startErr),
+					)
+				}
+			}()
 
-		schedulerAdapter = &adapters.Scheduler{
-			Scheduler: sch,
+			schedulerAdapter = &adapters.Scheduler{
+				Scheduler: sch,
+			}
+			slog.Info("Scheduler started", slog.String("env", cf.Env))
+		} else {
+			slog.Info("Scheduler skipped due to environment config", slog.String("env", cf.Env))
 		}
 
-		worker := scheduler.NewReminderWorker(
-			subscriptionService,
-			userService,
-			notifications.NewEmailSender(cf.Email),
-			redis.Client,
-			config.QueueRedisConfig(cf.Redis),
-			cf.QueueWorker.Concurrency,
-		)
-		go func() {
-			if startErr := worker.Start(ctx); startErr != nil && startErr != context.Canceled {
-				slog.Error("Worker failed",
-					slog.String("component", "main"),
-					slog.Any("error", startErr),
-				)
-			}
-		}()
+		if slices.Contains(cf.QueueWorker.EnabledForEnv, cf.Env) {
+			worker := scheduler.NewReminderWorker(
+				subscriptionService,
+				userService,
+				notifications.NewEmailSender(cf.Email),
+				redis.Client,
+				config.QueueRedisConfig(cf.Redis),
+				cf.QueueWorker.Concurrency,
+				cf.QueueWorker.QueueName,
+			)
+			go func() {
+				if startErr := worker.Start(ctx); startErr != nil && startErr != context.Canceled {
+					slog.Error("Worker failed",
+						slog.String("component", "main"),
+						slog.Any("error", startErr),
+					)
+				}
+			}()
 
-		schedulerWorkerAdapter = &adapters.SchedulerWorker{
-			Worker: worker,
+			schedulerWorkerAdapter = &adapters.SchedulerWorker{
+				Worker: worker,
+			}
+			slog.Info("Worker started", slog.String("env", cf.Env))
+		} else {
+			slog.Info("Worker skipped due to environment config", slog.String("env", cf.Env))
 		}
 	}
 

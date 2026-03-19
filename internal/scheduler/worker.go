@@ -32,6 +32,7 @@ func NewReminderWorker(
 	redisClient *redis.Client,
 	redisConfig *asynq.RedisClientOpt,
 	concurrency int,
+	queueName string,
 ) *ReminderWorker {
 	// Configure the server with appropriate concurrency.
 	server := asynq.NewServer(
@@ -39,7 +40,7 @@ func NewReminderWorker(
 		asynq.Config{
 			Concurrency: concurrency,
 			Queues: map[string]int{
-				"default": 10, // Process reminder tasks with higher priority.
+				queueName: 10, // Process reminder tasks with higher priority.
 				"low":     5,
 			},
 		},

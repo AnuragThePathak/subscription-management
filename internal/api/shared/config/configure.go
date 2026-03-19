@@ -22,8 +22,10 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("rate_limiter.requests_per_minute", 3*60)
 	viper.SetDefault("scheduler.interval", "12h")
 	viper.SetDefault("scheduler.reminder_days", [3]int{1, 3, 7})
+	viper.SetDefault("scheduler.enabled_for_env", []string{"development", "staging", "production"})
 	viper.SetDefault("queue_worker.concurrency", 2)
 	viper.SetDefault("queue_worker.queue_name", "default")
+	viper.SetDefault("queue_worker.enabled_for_env", []string{"development", "staging", "production"})
 	viper.SetDefault("email.smtp_port", 587)
 	viper.SetDefault("email.from_name", "Subscription Management")
 

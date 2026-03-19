@@ -47,14 +47,6 @@ func NewValidationError(msg string) AppError {
 	}
 }
 
-func NewUnprocessableEntity(msg string) AppError {
-	return &appError{
-		code:    ErrUnprocessable,
-		message: msg,
-		status:  http.StatusUnprocessableEntity,
-	}
-}
-
 // Database and CRUD errors.
 func NewNotFoundError(msg string) AppError {
 	return &appError{

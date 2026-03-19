@@ -53,7 +53,6 @@ This section provides lookup tables for common values and types. Use this when y
 | `FORBIDDEN` | 403 | Valid token but insufficient permissions |
 | `NOT_FOUND` | 404 | Resource doesn't exist |
 | `CONFLICT` | 409 | Duplicate resource (e.g., email already registered) |
-| `UNPROCESSABLE` | 422 | Valid syntax but business rule violation |
 | `RATE_LIMITED` | 429 | Too many requests |
 | `INTERNAL` | 500 | Unexpected server error |
 | `DB_ERROR` | 500 | Database operation failed |
@@ -338,7 +337,6 @@ type AppError interface {
 | `NOT_FOUND` | 404 | Resource doesn't exist |
 | `CONFLICT` | 409 | Duplicate resource |
 | `VALIDATION` | 400 | Invalid input |
-| `UNPROCESSABLE` | 422 | Valid syntax but invalid semantics |
 | `RATE_LIMITED` | 429 | Too many requests |
 | `DB_ERROR` | 500 | Database failures |
 | `TIMEOUT` | 504 | Request timeout |

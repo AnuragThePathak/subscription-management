@@ -17,7 +17,6 @@ const (
 	ErrValidation    ErrorCode = "VALIDATION"
 	ErrTimeout       ErrorCode = "TIMEOUT"
 	ErrDB            ErrorCode = "DB_ERROR"
-	ErrUnprocessable ErrorCode = "UNPROCESSABLE"
 	ErrRateLimited   ErrorCode = "RATE_LIMITED"
 )
 

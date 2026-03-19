@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -53,6 +54,9 @@ func (uc *userRepository) Create(ctx context.Context, user *models.User) (*model
 		if mongo.IsDuplicateKeyError(err) {
 			return nil, apperror.NewConflictError("Email already exists")
 		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, apperror.NewTimeoutError(err)
+		}
 		return nil, apperror.NewDBError(err)
 	}
 
@@ -82,6 +86,9 @@ func (uc *userRepository) Update(ctx context.Context, user *models.User) (*model
 		if mongo.IsDuplicateKeyError(err) {
 			return nil, apperror.NewConflictError("Email already exists")
 		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, apperror.NewTimeoutError(err)
+		}
 		return nil, apperror.NewDBError(err)
 	}
 	
@@ -95,6 +102,9 @@ func (uc *userRepository) Update(ctx context.Context, user *models.User) (*model
 func (uc *userRepository) Delete(ctx context.Context, id bson.ObjectID) error {
 	result, err := uc.collection.DeleteOne(ctx, bson.M{"_id": id})
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return apperror.NewTimeoutError(err)
+		}
 		return apperror.NewDBError(err)
 	}
 	

@@ -15,6 +15,7 @@ func LoadConfig() (*Config, error) {
 
 	// Set default values for configuration.
 	viper.SetDefault("server.port", 8080)
+	viper.SetDefault("server.request_timeout", "10s")
 	viper.SetDefault("server.tls.enabled", false)
 	viper.SetDefault("jwt.access_timeout", "1")
 	viper.SetDefault("jwt.refresh_timeout", "72")

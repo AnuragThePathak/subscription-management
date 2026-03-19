@@ -176,6 +176,7 @@ func main() {
 		r := chi.NewRouter()
 		r.Use(middleware.Logger)
 		r.Use(middleware.Recoverer)
+		r.Use(middlewares.Timeout(cf.Server.RequestTimeout))
 		r.Use(middlewares.RateLimiter(appRateLimiterService))
 
 		// Setup routes

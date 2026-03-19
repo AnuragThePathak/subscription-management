@@ -9,8 +9,9 @@ import (
 
 // ServerConfig holds the server configuration, including TLS settings.
 type ServerConfig struct {
-	Port int `mapstructure:"port"`
-	TLS  struct {
+	Port           int           `mapstructure:"port"`
+	RequestTimeout time.Duration `mapstructure:"request_timeout"`
+	TLS            struct {
 		Enabled  bool   `mapstructure:"enabled"`
 		CertPath string `mapstructure:"cert_path"`
 		KeyPath  string `mapstructure:"key_path"`

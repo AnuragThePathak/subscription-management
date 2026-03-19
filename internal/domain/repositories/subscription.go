@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -145,6 +146,9 @@ func (r *subscriptionRepository) Update(ctx context.Context, subscription *model
 
 	res, err := r.collection.UpdateOne(ctx, filter, update)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, apperror.NewTimeoutError(err)
+		}
 		return nil, apperror.NewDBError(err)
 	}
 	if res.MatchedCount == 0 {
@@ -159,6 +163,9 @@ func (r *subscriptionRepository) Delete(ctx context.Context, id bson.ObjectID) e
 
 	res, err := r.collection.DeleteOne(ctx, filter)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return apperror.NewTimeoutError(err)
+		}
 		return apperror.NewDBError(err)
 	}
 	if res.DeletedCount == 0 {

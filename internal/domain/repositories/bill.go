@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -52,7 +53,10 @@ func (r *billRepository) Create(ctx context.Context, bill *models.Bill) (*models
 		if mongo.IsDuplicateKeyError(err) {
 			return nil, apperror.NewConflictError("bill already exists")
 		}
-		return nil, err
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, apperror.NewTimeoutError(err)
+		}
+		return nil, apperror.NewDBError(err)
 	}
 
 	return bill, nil
@@ -78,6 +82,9 @@ func (r *billRepository) Update(ctx context.Context, bill *models.Bill) (*models
 	update := bson.M{"$set": bill}
 	res, err := r.collection.UpdateOne(ctx, filter, update)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, apperror.NewTimeoutError(err)
+		}
 		return nil, apperror.NewDBError(err)
 	}
 	if res.MatchedCount == 0 {

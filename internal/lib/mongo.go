@@ -17,6 +17,9 @@ func FindOne[T any](ctx context.Context, collection *mongo.Collection, filter bs
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return nil, apperror.NewNotFoundError("Document not found")
 		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, apperror.NewTimeoutError(err)
+		}
 		return nil, apperror.NewDBError(err)
 	}
 	return &result, nil
@@ -25,6 +28,9 @@ func FindOne[T any](ctx context.Context, collection *mongo.Collection, filter bs
 func FindMany[T any](ctx context.Context, collection *mongo.Collection, filter bson.M, opts ...options.Lister[options.FindOptions]) ([]*T, error) {
 	cursor, err := collection.Find(ctx, filter, opts...)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, apperror.NewTimeoutError(err)
+		}
 		return nil, apperror.NewDBError(err)
 	}
 	defer cursor.Close(ctx)
@@ -39,6 +45,9 @@ func FindMany[T any](ctx context.Context, collection *mongo.Collection, filter b
 	}
 
 	if err := cursor.Err(); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, apperror.NewTimeoutError(err)
+		}
 		return nil, apperror.NewDBError(err)
 	}
 	return results, nil

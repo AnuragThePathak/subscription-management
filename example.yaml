@@ -1,5 +1,6 @@
 server:
   port: 8080 # Port your server will run on
+  request_timeout: "10s" # HTTP request timeout duration
   tls:
     enabled: false # Set to true to enable TLS
     cert_path: "" # Path to TLS certificate (required if TLS is enabled)

@@ -23,11 +23,12 @@ type SubscriptionServiceExternal interface {
 
 type SubscriptionServiceInternal interface {
 	RenewSubscriptionInternal(context.Context, bson.ObjectID) (*models.Subscription, error)
-	GetUpcomingRenewalsInternal(context.Context, []int) ([]*models.Subscription, error)
+	FetchUpcomingRenewalsInternal(context.Context, []int) ([]*models.Subscription, error)
 	FetchSubscriptionByIDInternal(context.Context, bson.ObjectID) (*models.Subscription, error)
 	FetchSubscriptionsDueForRenewalInternal(context.Context, time.Time, time.Time) ([]*models.Subscription, error)
 	FetchCanceledExpiredSubscriptionsInternal(context.Context) ([]*models.Subscription, error)
 	MarkCanceledSubscriptionAsExpiredInternal(context.Context, bson.ObjectID) error
+	HasActiveSubscriptionsInternal(context.Context, bson.ObjectID) (bool, error)
 }
 
 type SubscriptionService interface {
@@ -283,9 +284,17 @@ func (s *subscriptionService) RenewSubscriptionInternal(ctx context.Context, id 
 	return s.subscriptionRepository.Update(ctx, subscription)
 }
 
-func (s *subscriptionService) GetUpcomingRenewalsInternal(ctx context.Context, days []int) ([]*models.Subscription, error) {
+func (s *subscriptionService) FetchUpcomingRenewalsInternal(ctx context.Context, days []int) ([]*models.Subscription, error) {
 	slog.Debug("Fetching subscriptions with upcoming renewals")
 	return s.subscriptionRepository.GetSubscriptionsDueForReminder(ctx, days)
+}
+
+func (s *subscriptionService) HasActiveSubscriptionsInternal(ctx context.Context, userID bson.ObjectID) (bool, error) {
+	subscriptions, err := s.subscriptionRepository.GetByUserID(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	return len(subscriptions) > 0, nil
 }
 
 func (s *subscriptionService) FetchSubscriptionByIDInternal(ctx context.Context, id bson.ObjectID) (*models.Subscription, error) {

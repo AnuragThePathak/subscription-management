@@ -22,6 +22,7 @@ type UserServiceExternal interface {
 
 type UserServiceInternal interface {
 	FetchUserByIDInternal(context.Context, bson.ObjectID) (*models.User, error)
+	FetchUserByEmailInternal(context.Context, string) (*models.User, error)
 }
 
 type UserService interface {
@@ -30,15 +31,15 @@ type UserService interface {
 }
 
 type userService struct {
-	userRepository         repositories.UserRepository
-	subscriptionRepository repositories.SubscriptionRepository
+	userRepository              repositories.UserRepository
+	subscriptionServiceInternal SubscriptionServiceInternal
 }
 
 // NewUserService creates a new instance of UserService.
-func NewUserService(userRepository repositories.UserRepository, subscriptionRepository repositories.SubscriptionRepository) UserService {
+func NewUserService(userRepository repositories.UserRepository, subscriptionServiceInternal SubscriptionServiceInternal) UserService {
 	return &userService{
 		userRepository,
-		subscriptionRepository,
+		subscriptionServiceInternal,
 	}
 }
 
@@ -171,12 +172,12 @@ func (us *userService) DeleteUser(ctx context.Context, id string, claimedUserID 
 		return err
 	}
 
-	// Check if user has any subscriptions
-	subscriptions, err := us.subscriptionRepository.GetByUserID(ctx, userID)
+	// Check if user has any active subscriptions
+	hasActive, err := us.subscriptionServiceInternal.HasActiveSubscriptionsInternal(ctx, userID)
 	if err != nil {
 		return err
 	}
-	if len(subscriptions) > 0 {
+	if hasActive {
 		return apperror.NewConflictError("User has active subscriptions and cannot be deleted")
 	}
 
@@ -186,4 +187,8 @@ func (us *userService) DeleteUser(ctx context.Context, id string, claimedUserID 
 
 func (us *userService) FetchUserByIDInternal(ctx context.Context, id bson.ObjectID) (*models.User, error) {
 	return us.userRepository.FindByID(ctx, id)
+}
+
+func (us *userService) FetchUserByEmailInternal(ctx context.Context, email string) (*models.User, error) {
+	return us.userRepository.FindByEmail(ctx, email)
 }

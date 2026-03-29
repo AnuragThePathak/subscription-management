@@ -115,10 +115,10 @@ func main() {
 	}
 	
 	appRateLimiterService := services.NewRateLimiterService(redisRateLimiter, config.NewRateLimit(&cf.RateLimiter.App), "app")
-	userService := services.NewUserService(userRepository, subscriptionRepository)
 	jwtService := services.NewJWTService(cf.JWT)
-	authService := services.NewAuthService(userRepository, jwtService)
 	subscriptionService := services.NewSubscriptionService(subscriptionRepository, billRepository)
+	userService := services.NewUserService(userRepository, subscriptionService)
+	authService := services.NewAuthService(userService, jwtService)
 	
 	var schedulerAdapter *adapters.Scheduler
 	var schedulerWorkerAdapter *adapters.SchedulerWorker

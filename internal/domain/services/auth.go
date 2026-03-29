@@ -6,7 +6,6 @@ import (
 
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/apperror"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
-	"github.com/anuragthepathak/subscription-management/internal/domain/repositories"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -18,22 +17,22 @@ type AuthService interface {
 }
 
 type authService struct {
-	userRepository repositories.UserRepository
-	jwtService     JWTService
+	userServiceInternal UserServiceInternal
+	jwtService          JWTService
 }
 
 // NewAuthService creates a new instance of AuthService.
-func NewAuthService(userRepository repositories.UserRepository, jwtService JWTService) AuthService {
+func NewAuthService(userServiceInternal UserServiceInternal, jwtService JWTService) AuthService {
 	return &authService{
-		userRepository: userRepository,
-		jwtService:     jwtService,
+		userServiceInternal: userServiceInternal,
+		jwtService:          jwtService,
 	}
 }
 
 // Login authenticates a user and returns JWT tokens.
 func (s *authService) Login(ctx context.Context, loginReq models.LoginRequest) (*models.TokenResponse, error) {
 	// Find the user by email.
-	user, err := s.userRepository.FindByEmail(ctx, loginReq.Email)
+	user, err := s.userServiceInternal.FetchUserByEmailInternal(ctx, loginReq.Email)
 	if err != nil {
 		return nil, apperror.NewNotFoundError("User not found")
 	}
@@ -66,7 +65,7 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 		return nil, apperror.NewUnauthorizedError("Invalid user ID in token")
 	}
 
-	user, err := s.userRepository.FindByID(ctx, userID)
+	user, err := s.userServiceInternal.FetchUserByIDInternal(ctx, userID)
 	if err != nil {
 		return nil, apperror.NewUnauthorizedError("User no longer exists")
 	}

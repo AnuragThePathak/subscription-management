@@ -250,7 +250,7 @@ func (s *SubscriptionScheduler) handleExpirationTasks(ctx context.Context) error
 
 // getSubscriptionsDueForReminder retrieves subscriptions that are due for reminders.
 func (s *SubscriptionScheduler) getSubscriptionsDueForReminder(ctx context.Context) ([]*models.Subscription, error) {
-	return s.subscriptionService.GetUpcomingRenewalsInternal(ctx, s.reminderDays)
+	return s.subscriptionService.FetchUpcomingRenewalsInternal(ctx, s.reminderDays)
 }
 
 // getSubscriptionsDueForRenewal retrieves subscriptions that are due for automatic renewal.

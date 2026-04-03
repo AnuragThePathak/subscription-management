@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"slices"
@@ -18,11 +19,13 @@ import (
 	"github.com/anuragthepathak/subscription-management/internal/domain/repositories"
 	"github.com/anuragthepathak/subscription-management/internal/domain/services"
 	"github.com/anuragthepathak/subscription-management/internal/notifications"
+	"github.com/anuragthepathak/subscription-management/internal/observability"
 	"github.com/anuragthepathak/subscription-management/internal/scheduler"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-playground/validator/v10"
 	"github.com/go-redis/redis_rate/v10"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -43,6 +46,25 @@ func main() {
 
 	// Configure the default slog logger
 	config.SetupLogger(cf.Env)
+
+	// Initialize OpenTelemetry (must be after logger, before DB/Redis so future phases can trace them).
+	var otelProvider *observability.Provider
+	if cf.OTel.Enabled {
+		otelConfig := observability.Config{
+			ServiceName:    cf.OTel.ServiceName,
+			Environment:    cf.Env,
+			JaegerEndpoint: cf.OTel.JaegerEndpoint,
+		}
+		if otelProvider, err = observability.InitOTel(ctx, otelConfig); err != nil {
+			slog.Error("Failed to initialize OpenTelemetry",
+				slog.String("component", "main"),
+				slog.Any("error", err),
+			)
+			os.Exit(1)
+		}
+	} else {
+		slog.Info("OpenTelemetry disabled", slog.String("component", "main"))
+	}
 
 	// Improved logging for startup
 	slog.Info("Starting Subscription Management Service",
@@ -113,13 +135,13 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	
+
 	appRateLimiterService := services.NewRateLimiterService(redisRateLimiter, config.NewRateLimit(&cf.RateLimiter.App), "app")
 	jwtService := services.NewJWTService(cf.JWT)
 	subscriptionService := services.NewSubscriptionService(subscriptionRepository, billRepository)
 	userService := services.NewUserService(userRepository, subscriptionService)
 	authService := services.NewAuthService(userService, jwtService)
-	
+
 	var schedulerAdapter *adapters.Scheduler
 	var schedulerWorkerAdapter *adapters.SchedulerWorker
 	{
@@ -181,7 +203,7 @@ func main() {
 		validate := validator.New(validator.WithRequiredStructEnabled())
 		requestHandler = endpoint.NewRequestHandler(validate)
 	}
-	
+
 	var apiServer adapters.Server
 	{
 		// Setup router
@@ -190,6 +212,11 @@ func main() {
 		r.Use(middleware.Recoverer)
 		r.Use(middlewares.Timeout(cf.Server.RequestTimeout))
 		r.Use(middlewares.RateLimiter(appRateLimiterService))
+
+		// Observability: Prometheus metrics endpoint (outside auth).
+		if cf.OTel.Enabled {
+			r.Method(http.MethodGet, "/metrics", promhttp.Handler())
+		}
 
 		// Setup routes
 		r.Mount("/api/v1/auth", controllers.NewAuthController(authService, userService, requestHandler))
@@ -215,13 +242,25 @@ func main() {
 		apiServer = srv.NewServer(r, apiserverConfig)
 	}
 
+	// Build cleanup handlers — only include non-nil components.
+	var cleanupHandlers []srv.CleanupHandler
+	{
+		cleanupHandlers = append(cleanupHandlers, database, redis) // Always not nil
+		if otelProvider != nil {
+			cleanupHandlers = append(cleanupHandlers, otelProvider)
+		}
+		if schedulerAdapter != nil {
+			cleanupHandlers = append(cleanupHandlers, schedulerAdapter)
+		}
+		if schedulerWorkerAdapter != nil {
+			cleanupHandlers = append(cleanupHandlers, schedulerWorkerAdapter)
+		}
+	}
+
 	apiServer.StartWithGracefulShutdown(
 		ctx,
 		10*time.Second,
-		database,
-		redis,
-		schedulerAdapter,
-		schedulerWorkerAdapter,
+		cleanupHandlers...,
 	)
 
 	slog.Info("Server shutdown completed")

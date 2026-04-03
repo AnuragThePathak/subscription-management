@@ -47,6 +47,10 @@ email:
   smtp_password: "password" # SMTP server password
   account_url: "url" # URL for account management
   support_url: "url" # URL for support
-  
+
+otel:
+  enabled: false # Set to true to enable OpenTelemetry tracing and metrics
+  service_name: "subscription-management" # Service name for traces and metrics
+  jaeger_endpoint: "localhost:4317" # OTLP gRPC endpoint for Jaeger
 
 env: "development" # Environment (development, production, etc.)

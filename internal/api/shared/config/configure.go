@@ -26,6 +26,9 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("queue_worker.concurrency", 2)
 	viper.SetDefault("queue_worker.queue_name", "default")
 	viper.SetDefault("queue_worker.enabled_for_env", []string{"development", "staging", "production"})
+	viper.SetDefault("otel.enabled", false)
+	viper.SetDefault("otel.service_name", "subscription-management")
+	viper.SetDefault("otel.jaeger_endpoint", "localhost:4317")
 	viper.SetDefault("email.smtp_port", 587)
 	viper.SetDefault("email.from_name", "Subscription Management")
 

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/anuragthepathak/subscription-management/internal/adapters"
+	"github.com/anuragthepathak/subscription-management/internal/observability"
 	"github.com/go-redis/redis_rate/v10"
 	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
@@ -40,6 +41,9 @@ func RedisConnection(redisConfig RedisConfig) *adapters.Redis {
 }
 
 // SetupLogger configures the global logger based on the environment.
+// The handler is wrapped with trace correlation so that any log call
+// using slog.InfoContext (or similar) with a traced context automatically
+// includes trace_id and span_id fields.
 func SetupLogger(env string) {
 	programLevel := new(slog.LevelVar)
 
@@ -55,6 +59,9 @@ func SetupLogger(env string) {
 			Level: programLevel,
 		})
 	}
+
+	// Wrap with trace correlation — adds trace_id/span_id when an OTel span is active.
+	handler = observability.NewTraceHandler(handler)
 
 	slog.SetDefault(slog.New(handler))
 	slog.Info("Logger initialized", slog.String("environment", env))

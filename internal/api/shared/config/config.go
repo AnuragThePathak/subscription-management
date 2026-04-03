@@ -52,6 +52,13 @@ type QueueWorkerConfig struct {
 	EnabledForEnv []string `mapstructure:"enabled_for_env"` // Environments where the worker is enabled.
 }
 
+// OTelConfig holds the OpenTelemetry observability configuration.
+type OTelConfig struct {
+	Enabled        bool   `mapstructure:"enabled"`         // Enable OpenTelemetry instrumentation.
+	ServiceName    string `mapstructure:"service_name"`    // Service name for traces and metrics.
+	JaegerEndpoint string `mapstructure:"jaeger_endpoint"` // OTLP gRPC endpoint for Jaeger.
+}
+
 // Config holds the complete application configuration.
 type Config struct {
 	Server      ServerConfig       `mapstructure:"server"`
@@ -62,6 +69,7 @@ type Config struct {
 	Scheduler   SchedulerConfig    `mapstructure:"scheduler"`
 	QueueWorker QueueWorkerConfig  `mapstructure:"queue_worker"`
 	Email       notifications.EmailConfig  `mapstructure:"email"`
+	OTel        OTelConfig         `mapstructure:"otel"`
 
 	RateLimiter struct {
 		App RateLimiterConfig `mapstructure:"app"` // Application-level rate limiter settings.

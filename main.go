@@ -208,6 +208,13 @@ func main() {
 	{
 		// Setup router
 		r := chi.NewRouter()
+
+		// Observability: OTel middleware first to capture the full request lifecycle.
+		// Ensures trace_id is injected into r.Context() for subsequent middlewares (like Logger).
+		if cf.OTel.Enabled {
+			r.Use(middlewares.OTel(cf.OTel.ServiceName))
+		}
+
 		r.Use(middleware.Logger)
 		r.Use(middleware.Recoverer)
 		r.Use(middlewares.Timeout(cf.Server.RequestTimeout))

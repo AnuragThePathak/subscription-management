@@ -9,14 +9,19 @@ import (
 	"github.com/anuragthepathak/subscription-management/internal/observability"
 	"github.com/go-redis/redis_rate/v10"
 	"github.com/hibiken/asynq"
+	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"go.opentelemetry.io/contrib/instrumentation/go.mongodb.org/mongo-driver/v2/mongo/otelmongo"
 )
 
 // DatabaseConnection establishes a connection to the MongoDB database.
 func DatabaseConnection(dbConfig DatabaseConfig) (*adapters.Database, error) {
-	dbClientOpts := options.Client().ApplyURI(dbConfig.URL)
+	dbClientOpts := options.Client().
+		ApplyURI(dbConfig.URL).
+		SetMonitor(otelmongo.NewMonitor()) // Inject OpenTelemetry monitor for DB tracing
+
 	db := adapters.Database{}
 	var err error
 	if db.Client, err = mongo.Connect(dbClientOpts); err != nil {
@@ -36,6 +41,12 @@ func RedisConnection(redisConfig RedisConfig) *adapters.Redis {
 		Password: redisConfig.Password,
 		DB:       redisConfig.DB,
 	})
+
+	// Inject OpenTelemetry tracing hooks into the Redis client
+	if err := redisotel.InstrumentTracing(rdb.Client); err != nil {
+		slog.Error("Failed to instrument Redis with tracing", slog.Any("error", err))
+	}
+
 	slog.Info("Connected to Redis", slog.String("url", redisConfig.URL), slog.Int("db", redisConfig.DB))
 	return &rdb
 }

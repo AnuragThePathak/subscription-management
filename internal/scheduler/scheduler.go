@@ -11,8 +11,12 @@ import (
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/anuragthepathak/subscription-management/internal/domain/services"
 	"github.com/anuragthepathak/subscription-management/internal/lib"
+	"github.com/anuragthepathak/subscription-management/internal/observability"
 	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -52,6 +56,7 @@ type SubscriptionScheduler struct {
 	client              *asynq.Client
 	interval            time.Duration
 	reminderDays        []int
+	tracer              trace.Tracer
 }
 
 // NewSubscriptionScheduler creates a new subscription scheduler.
@@ -69,6 +74,7 @@ func NewSubscriptionScheduler(
 		client:              client,
 		interval:            interval,
 		reminderDays:        reminderDays,
+		tracer:              otel.Tracer("subscription-scheduler"),
 	}
 }
 
@@ -102,6 +108,16 @@ func (s *SubscriptionScheduler) Start(ctx context.Context) error {
 
 // pollSubscriptions checks for subscriptions needing reminders and renewals, then schedules tasks.
 func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
+	// Start a trace span for this entire scheduler tick execution
+	ctx, span := s.tracer.Start(ctx, "Scheduler Tick: Poll Subscriptions",
+		trace.WithSpanKind(trace.SpanKindProducer), // Marks this span as a job producer
+		trace.WithAttributes(
+			attribute.String("scheduler.interval", s.interval.String()),
+			attribute.IntSlice("scheduler.reminder_days", s.reminderDays),
+		),
+	)
+	defer span.End()
+
 	slog.Info("Polling for subscriptions requiring reminders and renewals",
 		slog.String("component", "scheduler"))
 
@@ -160,7 +176,7 @@ func (s *SubscriptionScheduler) handleReminderTasks(ctx context.Context) error {
 		}
 
 		if exists == 0 { // Key does not exist, reminder not sent recently.
-			if err := s.scheduleReminderTask(subscription, daysBefore); err != nil {
+			if err := s.scheduleReminderTask(ctx, subscription, daysBefore); err != nil {
 				slog.Error("Failed to schedule reminder task",
 					slog.String("component", "scheduler"),
 					slog.String("subscription_id", subscription.ID.Hex()),
@@ -199,7 +215,7 @@ func (s *SubscriptionScheduler) handleRenewalTasks(ctx context.Context) error {
 
 	// Schedule renewal tasks for each subscription approaching renewal
 	for _, subscription := range renewalSubscriptions {
-		if err := s.scheduleRenewalTask(subscription); err != nil {
+		if err := s.scheduleRenewalTask(ctx, subscription); err != nil {
 			slog.Error("Failed to schedule renewal task",
 				slog.String("component", "scheduler"),
 				slog.String("subscription_id", subscription.ID.Hex()),
@@ -230,7 +246,7 @@ func (s *SubscriptionScheduler) handleExpirationTasks(ctx context.Context) error
 
 	// Schedule expiration tasks for each subscription
 	for _, subscription := range expiringSubscriptions {
-		if err := s.scheduleExpirationTask(subscription); err != nil {
+		if err := s.scheduleExpirationTask(ctx, subscription); err != nil {
 			slog.Error("Failed to schedule expiration task",
 				slog.String("component", "scheduler"),
 				slog.String("subscription_id", subscription.ID.Hex()),
@@ -270,7 +286,7 @@ func (s *SubscriptionScheduler) getSubscriptionsDueForExpiration(ctx context.Con
 }
 
 // scheduleReminderTask creates and enqueues a reminder task.
-func (s *SubscriptionScheduler) scheduleReminderTask(subscription *models.Subscription, daysBefore int) error {
+func (s *SubscriptionScheduler) scheduleReminderTask(ctx context.Context, subscription *models.Subscription, daysBefore int) error {
 	payload := ReminderPayload{
 		SubscriptionID: subscription.ID.Hex(),
 		DaysBefore:     daysBefore,
@@ -282,7 +298,8 @@ func (s *SubscriptionScheduler) scheduleReminderTask(subscription *models.Subscr
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	task := asynq.NewTask(ReminderTask, payloadBytes)
+	headers := observability.InjectIntoTaskHeaders(ctx)
+	task := asynq.NewTaskWithHeaders(ReminderTask, payloadBytes, headers)
 
 	info, err := s.client.Enqueue(
 		task,
@@ -306,7 +323,7 @@ func (s *SubscriptionScheduler) scheduleReminderTask(subscription *models.Subscr
 }
 
 // scheduleRenewalTask creates and enqueues a renewal task.
-func (s *SubscriptionScheduler) scheduleRenewalTask(subscription *models.Subscription) error {
+func (s *SubscriptionScheduler) scheduleRenewalTask(ctx context.Context, subscription *models.Subscription) error {
 	payload := RenewalPayload{
 		SubscriptionID: subscription.ID.Hex(),
 		RenewalDate:    subscription.ValidTill.Format(time.RFC3339),
@@ -317,7 +334,8 @@ func (s *SubscriptionScheduler) scheduleRenewalTask(subscription *models.Subscri
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	task := asynq.NewTask(RenewalTask, payloadBytes)
+	headers := observability.InjectIntoTaskHeaders(ctx)
+	task := asynq.NewTaskWithHeaders(RenewalTask, payloadBytes, headers)
 
 	// Calculate when the task should be processed - 4 hours before the renewal date
 	processAt := subscription.ValidTill.Add(-time.Hour * RenewalHoursBeforeDay)
@@ -350,7 +368,7 @@ func (s *SubscriptionScheduler) scheduleRenewalTask(subscription *models.Subscri
 }
 
 // New method to schedule expiration task
-func (s *SubscriptionScheduler) scheduleExpirationTask(subscription *models.Subscription) error {
+func (s *SubscriptionScheduler) scheduleExpirationTask(ctx context.Context, subscription *models.Subscription) error {
 	payload := ExpirationPayload{
 		SubscriptionID: subscription.ID.Hex(),
 		ValidTill:      subscription.ValidTill.Format(time.RFC3339),
@@ -361,7 +379,8 @@ func (s *SubscriptionScheduler) scheduleExpirationTask(subscription *models.Subs
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	task := asynq.NewTask(ExpirationTask, payloadBytes)
+	headers := observability.InjectIntoTaskHeaders(ctx)
+	task := asynq.NewTaskWithHeaders(ExpirationTask, payloadBytes, headers)
 
 	// Schedule task for immediate processing
 	info, err := s.client.Enqueue(

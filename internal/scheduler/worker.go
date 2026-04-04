@@ -10,6 +10,7 @@ import (
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/anuragthepathak/subscription-management/internal/domain/services"
 	"github.com/anuragthepathak/subscription-management/internal/notifications"
+	"github.com/anuragthepathak/subscription-management/internal/observability"
 	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -59,6 +60,10 @@ func NewReminderWorker(
 func (w *ReminderWorker) Start(ctx context.Context) error {
 	// Register task handlers.
 	mux := asynq.NewServeMux()
+	
+	// Inject OpenTelemetry middleware to extract trace IDs from the queue payload headers
+	mux.Use(observability.AsynqTracingMiddleware("subscription-worker"))
+
 	mux.HandleFunc(ReminderTask, w.handleSubscriptionReminder)
 	mux.HandleFunc(RenewalTask, w.handleSubscriptionRenewal)
 	mux.HandleFunc(ExpirationTask, w.handleSubscriptionExpiration)

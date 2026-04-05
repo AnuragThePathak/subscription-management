@@ -23,6 +23,7 @@ type ReminderWorker struct {
 	emailSender         *notifications.EmailSender
 	redisClient         *redis.Client
 	server              *asynq.Server
+	name                string
 }
 
 // NewReminderWorker creates a new reminder worker.
@@ -34,6 +35,7 @@ func NewReminderWorker(
 	redisConfig *asynq.RedisClientOpt,
 	concurrency int,
 	queueName string,
+	name string,
 ) *ReminderWorker {
 	// Configure the server with appropriate concurrency.
 	server := asynq.NewServer(
@@ -53,6 +55,7 @@ func NewReminderWorker(
 		emailSender,
 		redisClient,
 		server,
+		name,
 	}
 }
 
@@ -62,7 +65,7 @@ func (w *ReminderWorker) Start(ctx context.Context) error {
 	mux := asynq.NewServeMux()
 	
 	// Inject OpenTelemetry middleware to extract trace IDs from the queue payload headers
-	mux.Use(observability.AsynqTracingMiddleware("subscription-worker"))
+	mux.Use(observability.AsynqTracingMiddleware(w.name))
 
 	mux.HandleFunc(ReminderTask, w.handleSubscriptionReminder)
 	mux.HandleFunc(RenewalTask, w.handleSubscriptionRenewal)

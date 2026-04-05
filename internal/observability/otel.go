@@ -14,13 +14,6 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
-// Config holds the configuration needed to initialize OpenTelemetry.
-type Config struct {
-	ServiceName    string
-	Environment    string
-	JaegerEndpoint string
-}
-
 // Provider holds the initialized OTel providers and exposes a shutdown method.
 type Provider struct {
 	tracerProvider *sdktrace.TracerProvider

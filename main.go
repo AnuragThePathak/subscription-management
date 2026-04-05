@@ -50,12 +50,8 @@ func main() {
 	// Initialize OpenTelemetry (must be after logger, before DB/Redis so future phases can trace them).
 	var otelProvider *observability.Provider
 	if cf.OTel.Enabled {
-		otelConfig := observability.Config{
-			ServiceName:    cf.OTel.ServiceName,
-			Environment:    cf.Env,
-			JaegerEndpoint: cf.OTel.JaegerEndpoint,
-		}
-		if otelProvider, err = observability.InitOTel(ctx, otelConfig); err != nil {
+		cf.OTel.Environment = cf.Env
+		if otelProvider, err = observability.InitOTel(ctx, cf.OTel); err != nil {
 			slog.Error("Failed to initialize OpenTelemetry",
 				slog.String("component", "main"),
 				slog.Any("error", err),
@@ -138,7 +134,23 @@ func main() {
 
 	appRateLimiterService := services.NewRateLimiterService(redisRateLimiter, config.NewRateLimit(&cf.RateLimiter.App), "app")
 	jwtService := services.NewJWTService(cf.JWT)
-	subscriptionService := services.NewSubscriptionService(subscriptionRepository, billRepository)
+
+	var metricsPort services.SubscriptionMetrics
+	if cf.OTel.Enabled {
+		metricsPort, err = observability.NewMetricsAdapter(cf.OTel)
+		if err != nil {
+			slog.Error("Failed to initialize OpenTelemetry business metrics adater",
+				slog.String("component", "main"),
+				slog.Any("error", err),
+			)
+			os.Exit(1)
+		}
+	} else {
+		// Use a NoOp adapter so the domain layer requires no `if metrics != nil` checks.
+		metricsPort = observability.NewNoOpMetricsAdapter()
+	}
+
+	subscriptionService := services.NewSubscriptionService(subscriptionRepository, billRepository, metricsPort)
 	userService := services.NewUserService(userRepository, subscriptionService)
 	authService := services.NewAuthService(userService, jwtService)
 
@@ -152,6 +164,7 @@ func main() {
 				config.QueueRedisConfig(cf.Redis),
 				cf.Scheduler.Interval,
 				cf.Scheduler.ReminderDays,
+				cf.Scheduler.Name,
 			)
 			go func() {
 				if startErr := sch.Start(ctx); startErr != nil && startErr != context.Canceled {
@@ -179,6 +192,7 @@ func main() {
 				config.QueueRedisConfig(cf.Redis),
 				cf.QueueWorker.Concurrency,
 				cf.QueueWorker.QueueName,
+				cf.QueueWorker.Name,
 			)
 			go func() {
 				if startErr := worker.Start(ctx); startErr != nil && startErr != context.Canceled {

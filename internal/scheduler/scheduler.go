@@ -66,6 +66,7 @@ func NewSubscriptionScheduler(
 	redisConfig *asynq.RedisClientOpt,
 	interval time.Duration,
 	reminderDays []int,
+	name string,
 ) *SubscriptionScheduler {
 	client := asynq.NewClient(redisConfig)
 	return &SubscriptionScheduler{
@@ -74,7 +75,7 @@ func NewSubscriptionScheduler(
 		client:              client,
 		interval:            interval,
 		reminderDays:        reminderDays,
-		tracer:              otel.Tracer("subscription-scheduler"),
+		tracer:              otel.Tracer(name),
 	}
 }
 

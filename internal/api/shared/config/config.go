@@ -5,6 +5,7 @@ import (
 
 	"github.com/anuragthepathak/subscription-management/internal/domain/services"
 	"github.com/anuragthepathak/subscription-management/internal/notifications"
+	"github.com/anuragthepathak/subscription-management/internal/observability"
 )
 
 // ServerConfig holds the server configuration, including TLS settings.
@@ -40,6 +41,7 @@ type RedisConfig struct {
 
 // SchedulerConfig holds the configuration for the subscription scheduler.
 type SchedulerConfig struct {
+	Name          string        `mapstructure:"name"`
 	Interval      time.Duration `mapstructure:"interval"`        // Polling interval for reminders.
 	ReminderDays  []int         `mapstructure:"reminder_days"`   // Days before renewal to send reminders.
 	EnabledForEnv []string      `mapstructure:"enabled_for_env"` // Environments where the scheduler is enabled.
@@ -47,29 +49,23 @@ type SchedulerConfig struct {
 
 // QueueWorkerConfig holds the configuration for the queue worker.
 type QueueWorkerConfig struct {
+	Name          string   `mapstructure:"name"`
 	Concurrency   int      `mapstructure:"concurrency"`     // Number of concurrent workers.
 	QueueName     string   `mapstructure:"queue_name"`      // Name of the queue to process.
 	EnabledForEnv []string `mapstructure:"enabled_for_env"` // Environments where the worker is enabled.
 }
 
-// OTelConfig holds the OpenTelemetry observability configuration.
-type OTelConfig struct {
-	Enabled        bool   `mapstructure:"enabled"`         // Enable OpenTelemetry instrumentation.
-	ServiceName    string `mapstructure:"service_name"`    // Service name for traces and metrics.
-	JaegerEndpoint string `mapstructure:"jaeger_endpoint"` // OTLP gRPC endpoint for Jaeger.
-}
-
 // Config holds the complete application configuration.
 type Config struct {
-	Server      ServerConfig       `mapstructure:"server"`
-	Database    DatabaseConfig     `mapstructure:"database"`
-	JWT         services.JWTConfig `mapstructure:"jwt"`
-	Redis       RedisConfig        `mapstructure:"redis"`
-	Env         string             `mapstructure:"env"` // Current application environment (e.g., development, production).
-	Scheduler   SchedulerConfig    `mapstructure:"scheduler"`
-	QueueWorker QueueWorkerConfig  `mapstructure:"queue_worker"`
+	Server      ServerConfig               `mapstructure:"server"`
+	Database    DatabaseConfig             `mapstructure:"database"`
+	JWT         services.JWTConfig         `mapstructure:"jwt"`
+	Redis       RedisConfig                `mapstructure:"redis"`
+	Env         string                     `mapstructure:"env"` // Current application environment (e.g., development, production).
+	Scheduler   SchedulerConfig            `mapstructure:"scheduler"`
+	QueueWorker QueueWorkerConfig          `mapstructure:"queue_worker"`
 	Email       notifications.EmailConfig  `mapstructure:"email"`
-	OTel        OTelConfig         `mapstructure:"otel"`
+	OTel        observability.Config       `mapstructure:"otel"`
 
 	RateLimiter struct {
 		App RateLimiterConfig `mapstructure:"app"` // Application-level rate limiter settings.

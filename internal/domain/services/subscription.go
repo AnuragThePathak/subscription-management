@@ -21,6 +21,13 @@ type SubscriptionServiceExternal interface {
 	CancelSubscription(context.Context, string, string) (*models.Subscription, error)
 }
 
+type SubscriptionMetrics interface {
+	IncSubscriptionsCreated(ctx context.Context)
+	IncSubscriptionsCanceled(ctx context.Context)
+	IncActiveSubscriptions(ctx context.Context)
+	DecActiveSubscriptions(ctx context.Context)
+}
+
 type SubscriptionServiceInternal interface {
 	RenewSubscriptionInternal(context.Context, bson.ObjectID) (*models.Subscription, error)
 	FetchUpcomingRenewalsInternal(context.Context, []int) ([]*models.Subscription, error)
@@ -39,15 +46,18 @@ type SubscriptionService interface {
 type subscriptionService struct {
 	subscriptionRepository repositories.SubscriptionRepository
 	billRepository         repositories.BillRepository
+	metrics                SubscriptionMetrics
 }
 
 func NewSubscriptionService(
 	subscriptionRepository repositories.SubscriptionRepository,
 	billRepository repositories.BillRepository,
+	metrics SubscriptionMetrics,
 ) SubscriptionService {
 	return &subscriptionService{
 		subscriptionRepository,
 		billRepository,
+		metrics,
 	}
 }
 
@@ -97,7 +107,15 @@ func (s *subscriptionService) CreateSubscription(ctx context.Context, subscripti
 	subscription.CreatedAt = now
 	subscription.UpdatedAt = now
 
-	return s.subscriptionRepository.Create(ctx, subscription)
+	res, err := s.subscriptionRepository.Create(ctx, subscription)
+	if err != nil {
+		return nil, err
+	}
+
+	s.metrics.IncSubscriptionsCreated(ctx)
+	s.metrics.IncActiveSubscriptions(ctx)
+
+	return res, nil
 }
 
 func (s *subscriptionService) GetAllSubscriptions(ctx context.Context) ([]*models.Subscription, error) {
@@ -225,7 +243,15 @@ func (s *subscriptionService) CancelSubscription(ctx context.Context, id string,
 	subscription.Status = models.Canceled
 	subscription.UpdatedAt = now
 
-	return s.subscriptionRepository.Update(ctx, subscription)
+	res, err := s.subscriptionRepository.Update(ctx, subscription)
+	if err != nil {
+		return nil, err
+	}
+
+	s.metrics.IncSubscriptionsCanceled(ctx)
+	s.metrics.DecActiveSubscriptions(ctx)
+
+	return res, nil
 }
 
 func (s *subscriptionService) RenewSubscriptionInternal(ctx context.Context, id bson.ObjectID) (*models.Subscription, error) {

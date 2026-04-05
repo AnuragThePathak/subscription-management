@@ -45,7 +45,7 @@ func main() {
 	}
 
 	// Configure the default slog logger
-	config.SetupLogger(cf.Env)
+	config.SetupLogger(cf.Env, cf.OTel.Enabled)
 
 	// Initialize OpenTelemetry (must be after logger, before DB/Redis so future phases can trace them).
 	var otelProvider *observability.Provider
@@ -71,7 +71,7 @@ func main() {
 	// Initialize the database client
 	var database *adapters.Database
 	{
-		if database, err = config.DatabaseConnection(cf.Database); err != nil {
+		if database, err = config.DatabaseConnection(cf.Database, cf.OTel.Enabled); err != nil {
 			slog.Error("Failed to initialize database client",
 				slog.String("component", "main"),
 				slog.Any("error", err),
@@ -89,7 +89,7 @@ func main() {
 
 	var redis *adapters.Redis
 	{
-		redis = config.RedisConnection(cf.Redis)
+		redis = config.RedisConnection(cf.Redis, cf.OTel.Enabled)
 		if err = redis.Ping(ctx); err != nil {
 			slog.Error("Failed to connect to Redis",
 				slog.String("component", "main"),

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"io"
 	"log/slog"
 	"os"
 	"time"
@@ -17,10 +18,11 @@ import (
 )
 
 // DatabaseConnection establishes a connection to the MongoDB database.
-func DatabaseConnection(dbConfig DatabaseConfig) (*adapters.Database, error) {
-	dbClientOpts := options.Client().
-		ApplyURI(dbConfig.URL).
-		SetMonitor(otelmongo.NewMonitor()) // Inject OpenTelemetry monitor for DB tracing
+func DatabaseConnection(dbConfig DatabaseConfig, otelEnabled bool) (*adapters.Database, error) {
+	dbClientOpts := options.Client().ApplyURI(dbConfig.URL)
+	if otelEnabled {
+		dbClientOpts.SetMonitor(otelmongo.NewMonitor())
+	}
 
 	db := adapters.Database{}
 	var err error
@@ -34,7 +36,7 @@ func DatabaseConnection(dbConfig DatabaseConfig) (*adapters.Database, error) {
 }
 
 // RedisConnection establishes a connection to the Redis database.
-func RedisConnection(redisConfig RedisConfig) *adapters.Redis {
+func RedisConnection(redisConfig RedisConfig, otelEnabled bool) *adapters.Redis {
 	rdb := adapters.Redis{}
 	rdb.Client = redis.NewClient(&redis.Options{
 		Addr:     redisConfig.URL,
@@ -42,9 +44,10 @@ func RedisConnection(redisConfig RedisConfig) *adapters.Redis {
 		DB:       redisConfig.DB,
 	})
 
-	// Inject OpenTelemetry tracing hooks into the Redis client
-	if err := redisotel.InstrumentTracing(rdb.Client); err != nil {
-		slog.Error("Failed to instrument Redis with tracing", slog.Any("error", err))
+	if otelEnabled {
+		if err := redisotel.InstrumentTracing(rdb.Client); err != nil {
+			slog.Error("Failed to instrument Redis with tracing", slog.Any("error", err))
+		}
 	}
 
 	slog.Info("Connected to Redis", slog.String("url", redisConfig.URL), slog.Int("db", redisConfig.DB))
@@ -55,17 +58,39 @@ func RedisConnection(redisConfig RedisConfig) *adapters.Redis {
 // The handler is wrapped with trace correlation so that any log call
 // using slog.InfoContext (or similar) with a traced context automatically
 // includes trace_id and span_id fields.
-func SetupLogger(env string) {
+//
+// When OTel is enabled, logs are written as JSON to both stderr and
+// ./logs/app.log (for Promtail to tail and ship to Loki).
+func SetupLogger(env string, otelEnabled bool) {
 	programLevel := new(slog.LevelVar)
-
-	var handler slog.Handler
 	if env == "production" {
 		programLevel.Set(slog.LevelInfo)
+	} else {
+		programLevel.Set(slog.LevelDebug)
+	}
+
+	var handler slog.Handler
+	if otelEnabled {
+		// When OTel is enabled, always use JSON for structured log ingestion.
+		// Promtail tails ./logs/app.log and requires JSON for trace_id extraction.
+		writers := []io.Writer{os.Stderr}
+
+		if err := os.MkdirAll("logs", 0o755); err != nil {
+			slog.Error("Failed to create logs directory", slog.Any("error", err))
+		} else if logFile, err := os.OpenFile("logs/app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err != nil {
+			slog.Error("Failed to open log file", slog.Any("error", err))
+		} else {
+			writers = append(writers, logFile)
+		}
+
+		handler = slog.NewJSONHandler(io.MultiWriter(writers...), &slog.HandlerOptions{
+			Level: programLevel,
+		})
+	} else if env == "production" {
 		handler = slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
 			Level: programLevel,
 		})
 	} else {
-		programLevel.Set(slog.LevelDebug)
 		handler = slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 			Level: programLevel,
 		})

@@ -2,6 +2,7 @@ package observability
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
 	"go.opentelemetry.io/otel"
@@ -82,12 +83,13 @@ func InitOTel(ctx context.Context, cfg Config) (*Provider, error) {
 func (p *Provider) Shutdown(ctx context.Context) error {
 	slog.Info("Shutting down OpenTelemetry providers", slog.String("component", "observability"))
 
+	var errs []error
 	if err := p.tracerProvider.Shutdown(ctx); err != nil {
 		slog.Error("Failed to shutdown tracer provider",
 			slog.String("component", "observability"),
 			slog.Any("error", err),
 		)
-		return err
+		errs = append(errs, err)
 	}
 
 	if err := p.meterProvider.Shutdown(ctx); err != nil {
@@ -95,9 +97,11 @@ func (p *Provider) Shutdown(ctx context.Context) error {
 			slog.String("component", "observability"),
 			slog.Any("error", err),
 		)
-		return err
+		errs = append(errs, err)
 	}
 
-	slog.Info("OpenTelemetry shut down successfully", slog.String("component", "observability"))
-	return nil
+	if len(errs) == 0 {
+		slog.Info("OpenTelemetry shut down successfully", slog.String("component", "observability"))
+	}
+	return errors.Join(errs...)
 }

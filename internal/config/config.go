@@ -57,15 +57,15 @@ type QueueWorkerConfig struct {
 
 // Config holds the complete application configuration.
 type Config struct {
-	Server      ServerConfig               `mapstructure:"server"`
-	Database    DatabaseConfig             `mapstructure:"database"`
-	JWT         services.JWTConfig         `mapstructure:"jwt"`
-	Redis       RedisConfig                `mapstructure:"redis"`
-	Env         string                     `mapstructure:"env"` // Current application environment (e.g., development, production).
-	Scheduler   SchedulerConfig            `mapstructure:"scheduler"`
-	QueueWorker QueueWorkerConfig          `mapstructure:"queue_worker"`
-	Email       notifications.EmailConfig  `mapstructure:"email"`
-	OTel        observability.Config       `mapstructure:"otel"`
+	Server      ServerConfig              `mapstructure:"server"`
+	Database    DatabaseConfig            `mapstructure:"database"`
+	JWT         services.JWTConfig        `mapstructure:"jwt"`
+	Redis       RedisConfig               `mapstructure:"redis"`
+	Env         string                    `mapstructure:"env"` // Current application environment (e.g., development, production).
+	Scheduler   SchedulerConfig           `mapstructure:"scheduler"`
+	QueueWorker QueueWorkerConfig         `mapstructure:"queue_worker"`
+	Email       notifications.EmailConfig `mapstructure:"email"`
+	OTel        observability.Config      `mapstructure:"otel"`
 
 	RateLimiter struct {
 		App RateLimiterConfig `mapstructure:"app"` // Application-level rate limiter settings.

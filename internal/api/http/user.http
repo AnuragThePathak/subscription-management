@@ -1,6 +1,9 @@
-# User API - User management endpoints.
+# ==============================================================================
+# User API
+# ==============================================================================
+# User management endpoints.
 # Requires authentication via Bearer token.
-# Note: User registration is handled via the auth controller.
+# Note: User registration is handled via the Auth API.
 
 @baseUrl = http://localhost:8080/api/v1/users
 @accessToken = YOUR_ACCESS_TOKEN_HERE

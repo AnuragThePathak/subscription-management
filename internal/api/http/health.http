@@ -1,0 +1,26 @@
+# ==============================================================================
+# Health API
+# ==============================================================================
+# Liveness, readiness, and metrics endpoints for the service.
+
+@baseUrl = http://localhost:8080
+
+###############################################################################
+# HEALTH CHECKS
+###############################################################################
+
+### Liveness Probe (healthz)
+# Checks if the application is running and responsive.
+GET {{baseUrl}}/healthz
+
+### Readiness Probe (readyz)
+# Checks if the application is ready to traffic (e.g., DB connected).
+GET {{baseUrl}}/readyz
+
+###############################################################################
+# METRICS
+###############################################################################
+
+### Prometheus Metrics
+# Exposes application metrics in Prometheus format.
+GET {{baseUrl}}/metrics

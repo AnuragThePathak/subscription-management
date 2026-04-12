@@ -1,4 +1,7 @@
-# Subscriptions API - CRUD operations for subscription management.
+# ==============================================================================
+# Subscriptions API
+# ==============================================================================
+# CRUD operations for subscription management.
 # Requires authentication via Bearer token.
 
 @baseUrl = http://localhost:8080/api/v1/subscriptions

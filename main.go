@@ -223,11 +223,6 @@ func main() {
 		// Setup router
 		r := chi.NewRouter()
 
-		// Observability: Prometheus metrics endpoint — always exposed so
-		// infrastructure tooling (healthchecks, Prometheus) can scrape it
-		// regardless of whether OTel tracing is enabled.
-		r.Method(http.MethodGet, "/metrics", promhttp.Handler())
-
 		// Observability: OTel middleware first to capture the full request lifecycle.
 		// Ensures trace_id is injected into r.Context() for subsequent middlewares (like Logger).
 		if cf.OTel.Enabled {
@@ -238,6 +233,11 @@ func main() {
 		r.Use(middleware.Recoverer)
 		r.Use(middlewares.Timeout(cf.Server.RequestTimeout))
 		r.Use(middlewares.RateLimiter(appRateLimiterService))
+
+		// Observability: Prometheus metrics endpoint — always exposed so
+		// infrastructure tooling (healthchecks, Prometheus) can scrape it
+		// regardless of whether OTel tracing is enabled.
+		r.Method(http.MethodGet, "/metrics", promhttp.Handler())
 
 		// Setup routes
 		r.Mount("/api/v1/auth", controllers.NewAuthController(authService, userService, requestHandler))

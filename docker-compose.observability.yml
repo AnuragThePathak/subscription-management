@@ -1,0 +1,53 @@
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: sub_mgt_jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686" # UI
+      - "4317:4317"   # OTLP gRPC payload port
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: sub_mgt_prometheus
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090" # UI & Queries
+
+  loki:
+    image: grafana/loki:latest
+    container_name: sub_mgt_loki
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./observability/loki.yml:/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: sub_mgt_promtail
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      # ./logs is created at runtime by the app (os.MkdirAll). If it doesn't
+      # exist yet, create it manually once: mkdir -p logs
+      - ./logs:/var/log/app
+      - ./observability/promtail.yml:/etc/promtail/config.yml
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: sub_mgt_grafana
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    volumes:
+      - ./observability/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
+      - ./observability/grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards
+    ports:
+      - "3000:3000" # Main Dashboard UI
+    depends_on:
+      - prometheus
+      - loki
+      - jaeger

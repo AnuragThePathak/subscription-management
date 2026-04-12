@@ -1,0 +1,13 @@
+global:
+  # 15s is the standard production scrape interval.
+  # You can lower to 5s locally if you want faster feedback in Grafana.
+  scrape_interval: 7s
+
+scrape_configs:
+  - job_name: 'subscription-management'
+    metrics_path: '/metrics'
+    static_configs:
+      # host.docker.internal resolves to the Docker host on macOS/Windows.
+      # The port must match server.port in config.yaml (default: 8080).
+      # Update this if you change the application port.
+      - targets: ['host.docker.internal:8080']

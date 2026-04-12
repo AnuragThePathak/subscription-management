@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: subscription-management
+    folder: Subscription Management
+    type: file
+    disableDeletion: true      # Prevent deletion via UI — source of truth is the file.
+    updateIntervalSeconds: 30  # Reload dashboards from disk every 30s.
+    allowUiUpdates: false      # Changes via UI won't persist; edit the JSON file instead.
+    options:
+      path: /var/lib/grafana/dashboards

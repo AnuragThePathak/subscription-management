@@ -326,7 +326,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "sum by (level) (count_over_time({job=\"subscription-service\"} [1m]))",
+          "expr": "sum by (level) (count_over_time({job=\"subscription-management\"} [1m]))",
           "legendFormat": "{{level}}",
           "refId": "A"
         }
@@ -352,7 +352,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{job=\"subscription-service\"}",
+          "expr": "{job=\"subscription-management\"}",
           "legendFormat": "",
           "refId": "A"
         }

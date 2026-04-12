@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -24,6 +25,10 @@ func OTel(serviceName string) func(http.Handler) http.Handler {
 					// Rename the span so Jaeger shows the route (e.g. "/api/v1/users/{id}")
 					// instead of a generic "HTTP GET" or the base service name.
 					trace.SpanFromContext(r.Context()).SetName(pattern)
+
+					if labeler, ok := otelhttp.LabelerFromContext(r.Context()); ok {
+						labeler.Add(attribute.String("http.route", pattern))
+					}
 				}
 			}
 		})

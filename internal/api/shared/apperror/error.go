@@ -55,7 +55,8 @@ func (e *appError) Status() int {
 	return e.status
 }
 
-// TODO: add comments
+// Unwrap returns the underlying wrapped error, allowing standard library
+// functions like errors.Is and errors.As to work seamlessly.
 func (e *appError) Unwrap() error {
 	return e.err
 }

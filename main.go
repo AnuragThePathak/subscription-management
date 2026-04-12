@@ -14,8 +14,8 @@ import (
 	"github.com/anuragthepathak/subscription-management/internal/adapters"
 	"github.com/anuragthepathak/subscription-management/internal/api/controllers"
 	"github.com/anuragthepathak/subscription-management/internal/api/middlewares"
-	"github.com/anuragthepathak/subscription-management/internal/config"
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/endpoint"
+	"github.com/anuragthepathak/subscription-management/internal/config"
 	"github.com/anuragthepathak/subscription-management/internal/domain/repositories"
 	"github.com/anuragthepathak/subscription-management/internal/domain/services"
 	"github.com/anuragthepathak/subscription-management/internal/notifications"
@@ -195,33 +195,39 @@ func main() {
 		// Setup router
 		r := chi.NewRouter()
 
-		// Observability: OTel middleware first to capture the full request lifecycle.
-		// Ensures trace_id is injected into r.Context() for subsequent middlewares (like Logger).
-		if cf.OTel.Enabled {
-			r.Use(middlewares.OTel(cf.OTel.ServiceName))
-		}
-
-		r.Use(middleware.Logger)
 		r.Use(middleware.Recoverer)
 		r.Use(middlewares.Timeout(cf.Server.RequestTimeout))
-		r.Use(middlewares.RateLimiter(appRateLimiterService))
-
+		
 		// Observability: Prometheus metrics endpoint — always exposed so
 		// infrastructure tooling (healthchecks, Prometheus) can scrape it
 		// regardless of whether OTel tracing is enabled.
 		r.Method(http.MethodGet, "/metrics", promhttp.Handler())
-
-		// Setup routes
-		r.Mount("/api/v1/auth", controllers.NewAuthController(authService, userService, requestHandler))
-
-		// Protected routes
+		
+		// Health Checks
+		r.Mount("/", controllers.NewHealthController(database, redis))
+		
+		// Service Specific API Group
 		r.Group(func(r chi.Router) {
-			// Apply authentication middleware
-			r.Use(middlewares.Authentication(jwtService))
+			// Observability: OTel middleware first to capture the full request lifecycle.
+			// Ensures trace_id is injected into r.Context() for subsequent middlewares (like Logger).
+			if cf.OTel.Enabled {
+				r.Use(middlewares.OTel(cf.OTel.ServiceName))
+			}
+			r.Use(middleware.Logger)
+			r.Use(middlewares.RateLimiter(appRateLimiterService))
 
-			// User routes with authentication
-			r.Mount("/api/v1/users", controllers.NewUserController(userService, requestHandler))
-			r.Mount("/api/v1/subscriptions", controllers.NewSubscriptionController(subscriptionService, requestHandler))
+			// Setup routes
+			r.Mount("/api/v1/auth", controllers.NewAuthController(authService, userService, requestHandler))
+
+			// Protected routes
+			r.Group(func(r chi.Router) {
+				// Apply authentication middleware
+				r.Use(middlewares.Authentication(jwtService))
+
+				// User routes with authentication
+				r.Mount("/api/v1/users", controllers.NewUserController(userService, requestHandler))
+				r.Mount("/api/v1/subscriptions", controllers.NewSubscriptionController(subscriptionService, requestHandler))
+			})
 		})
 
 		// Create a new server configuration

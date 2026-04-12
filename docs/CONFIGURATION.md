@@ -82,3 +82,28 @@ The service will not start without these:
 - **Gmail SMTP**: Requires an App Password, not your regular password
 - **Rate limiter**: `rate: 1, burst: 5, period: "2s"` = 1 req/2s average, bursts up to 5
 - **Scheduler interval**: How often to check for renewals/reminders (Go duration format: `"12h"`, `"30m"`)
+
+## Observability & Health Checks
+
+The service exposes endpoints for infrastructure monitoring and orchestrator health checks:
+
+- `GET /metrics`: Prometheus metrics (available unconditionally).
+- `GET /healthz`: Basic liveness probe (validates the process is running).
+- `GET /readyz`: Readiness probe (validates connections to MongoDB and Redis).
+
+**Kubernetes Orchestration Example:**
+```yaml
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 10
+```

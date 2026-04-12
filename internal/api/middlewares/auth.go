@@ -31,7 +31,7 @@ func Authentication(jwtService services.JWTService) func(next http.Handler) http
 			tokenString := parts[1]
 			claims, err := jwtService.ValidateToken(tokenString, models.AccessToken)
 			if err != nil {
-				slog.Warn("Invalid token", slog.String("error", err.Error()))
+				slog.WarnContext(r.Context(), "Invalid token", slog.Any("error", err))
 				endpoint.WriteAPIResponse(w, http.StatusUnauthorized, map[string]string{"error": "Invalid token"})
 				return
 			}

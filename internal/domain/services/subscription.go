@@ -62,7 +62,6 @@ func NewSubscriptionService(
 }
 
 func (s *subscriptionService) CreateSubscription(ctx context.Context, subscription *models.Subscription, claimedUserID string) (*models.Subscription, error) {
-	slog.Debug("Creating subscription", slog.String("subscription", subscription.Name))
 	userID, err := bson.ObjectIDFromHex(claimedUserID)
 	if err != nil {
 		return nil, apperror.NewUnauthorizedError("Invalid user ID")
@@ -115,6 +114,11 @@ func (s *subscriptionService) CreateSubscription(ctx context.Context, subscripti
 	s.metrics.IncSubscriptionsCreated(ctx)
 	s.metrics.IncActiveSubscriptions(ctx)
 
+	slog.InfoContext(ctx, "Subscription created",
+		slog.String("subscription_id", res.ID.Hex()),
+		slog.String("user_id", claimedUserID),
+		slog.String("name", subscription.Name),
+	)
 	return res, nil
 }
 
@@ -158,8 +162,7 @@ func (s *subscriptionService) GetSubscriptionsByUserID(ctx context.Context, id s
 	return s.subscriptionRepository.GetByUserID(ctx, userID)
 }
 
-func (s *subscriptionService) DeleteSubscription(ctx context.Context, id string, claimedUserID string) error {
-	slog.Debug("Deleting subscription", slog.String("subscriptionID", id))
+func (s *subscriptionService) DeleteSubscription(ctx context.Context, claimedUserID string, id string) error {
 	subscriptionID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return apperror.NewBadRequestError("Invalid subscription ID")
@@ -184,11 +187,18 @@ func (s *subscriptionService) DeleteSubscription(ctx context.Context, id string,
 		return apperror.NewConflictError("You can only delete expired subscriptions")
 	}
 
-	return s.subscriptionRepository.Delete(ctx, subscriptionID)
+	if err = s.subscriptionRepository.Delete(ctx, subscriptionID); err != nil {
+		return err
+	}
+
+	slog.InfoContext(ctx, "Subscription deleted",
+		slog.String("subscription_id", id),
+		slog.String("user_id", claimedUserID),
+	)
+	return nil
 }
 
-func (s *subscriptionService) CancelSubscription(ctx context.Context, id string, claimedUserID string) (*models.Subscription, error) {
-	slog.Debug("Canceling subscription", slog.String("subscriptionID", id))
+func (s *subscriptionService) CancelSubscription(ctx context.Context, claimedUserID string, id string) (*models.Subscription, error) {
 	subscriptionID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return nil, apperror.NewBadRequestError("Invalid subscription ID")
@@ -251,11 +261,15 @@ func (s *subscriptionService) CancelSubscription(ctx context.Context, id string,
 	s.metrics.IncSubscriptionsCanceled(ctx)
 	s.metrics.DecActiveSubscriptions(ctx)
 
+	slog.InfoContext(ctx, "Subscription canceled",
+		slog.String("subscription_id", id),
+		slog.String("user_id", claimedUserID),
+	)
 	return res, nil
 }
 
 func (s *subscriptionService) RenewSubscriptionInternal(ctx context.Context, id bson.ObjectID) (*models.Subscription, error) {
-	slog.Debug("Renewing subscription", slog.String("subscriptionID", id.Hex()))
+	slog.DebugContext(ctx, "Renewing subscription", slog.String("subscription_id", id.Hex()))
 
 	subscription, err := s.subscriptionRepository.GetByID(ctx, id)
 	if err != nil {
@@ -310,9 +324,8 @@ func (s *subscriptionService) RenewSubscriptionInternal(ctx context.Context, id 
 	return s.subscriptionRepository.Update(ctx, subscription)
 }
 
-func (s *subscriptionService) FetchUpcomingRenewalsInternal(ctx context.Context, days []int) ([]*models.Subscription, error) {
-	slog.Debug("Fetching subscriptions with upcoming renewals")
-	return s.subscriptionRepository.GetSubscriptionsDueForReminder(ctx, days)
+func (s *subscriptionService) FetchUpcomingRenewalsInternal(ctx context.Context, daysAhead []int) ([]*models.Subscription, error) {
+	return s.subscriptionRepository.GetSubscriptionsDueForReminder(ctx, daysAhead)
 }
 
 func (s *subscriptionService) HasActiveSubscriptionsInternal(ctx context.Context, userID bson.ObjectID) (bool, error) {
@@ -337,7 +350,7 @@ func (s *subscriptionService) FetchCanceledExpiredSubscriptionsInternal(ctx cont
 }
 
 func (s *subscriptionService) MarkCanceledSubscriptionAsExpiredInternal(ctx context.Context, id bson.ObjectID) error {
-	slog.Debug("Marking canceled subscriptions as expired")
+	slog.DebugContext(ctx, "Marking canceled subscription as expired", slog.String("subscription_id", id.Hex()))
 	subscription, err := s.subscriptionRepository.GetByID(ctx, id)
 	if err != nil {
 		return err

@@ -21,20 +21,20 @@ func (r *Redis) Shutdown(ctx context.Context) error {
 	closeChan := make(chan error, 1)
 
 	go func() {
-		slog.Info("Closing Redis client", slog.String("component", "redis"))
+		slog.InfoContext(ctx, "Closing Redis client")
 		closeChan <- r.Client.Close()
 	}()
 
 	select {
 	case err := <-closeChan:
 		if err != nil {
-			slog.Error("Failed to close Redis client", slog.String("component", "redis"), slog.Any("error", err))
+			slog.ErrorContext(ctx, "Failed to close Redis client", slog.Any("error", err))
 		} else {
-			slog.Info("Redis client closed successfully", slog.String("component", "redis"))
+			slog.InfoContext(ctx, "Redis client closed successfully")
 		}
 		return err
 	case <-ctx.Done():
-		slog.Warn("Context expired while closing Redis client", slog.String("component", "redis"))
+		slog.WarnContext(ctx, "Context expired while closing Redis client")
 		return ctx.Err()
 	}
 }
@@ -42,9 +42,9 @@ func (r *Redis) Shutdown(ctx context.Context) error {
 // Ping checks the connection to the Redis server.
 func (r *Redis) Ping(ctx context.Context) error {
 	if err := r.Client.Ping(ctx).Err(); err != nil {
-		slog.Error("Redis ping failed", slog.String("component", "redis"), slog.Any("error", err))
+		slog.ErrorContext(ctx, "Redis ping failed", slog.Any("error", err))
 		return err
 	}
-	slog.Debug("Redis ping successful", slog.String("component", "redis"))
+	slog.DebugContext(ctx, "Redis ping successful")
 	return nil
 }

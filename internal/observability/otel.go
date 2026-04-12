@@ -68,7 +68,6 @@ func InitOTel(ctx context.Context, cfg Config) (*Provider, error) {
 	otel.SetMeterProvider(meterProvider)
 
 	slog.Info("OpenTelemetry initialized",
-		slog.String("component", "observability"),
 		slog.String("service", cfg.ServiceName),
 		slog.String("jaeger", cfg.JaegerEndpoint),
 	)
@@ -81,27 +80,25 @@ func InitOTel(ctx context.Context, cfg Config) (*Provider, error) {
 
 // Shutdown flushes and shuts down all OTel providers.
 func (p *Provider) Shutdown(ctx context.Context) error {
-	slog.Info("Shutting down OpenTelemetry providers", slog.String("component", "observability"))
+	slog.InfoContext(ctx, "Shutting down OpenTelemetry providers")
 
 	var errs []error
 	if err := p.tracerProvider.Shutdown(ctx); err != nil {
-		slog.Error("Failed to shutdown tracer provider",
-			slog.String("component", "observability"),
+		slog.ErrorContext(ctx, "Failed to shutdown tracer provider",
 			slog.Any("error", err),
 		)
 		errs = append(errs, err)
 	}
 
 	if err := p.meterProvider.Shutdown(ctx); err != nil {
-		slog.Error("Failed to shutdown meter provider",
-			slog.String("component", "observability"),
+		slog.ErrorContext(ctx, "Failed to shutdown meter provider",
 			slog.Any("error", err),
 		)
 		errs = append(errs, err)
 	}
 
 	if len(errs) == 0 {
-		slog.Info("OpenTelemetry shut down successfully", slog.String("component", "observability"))
+		slog.InfoContext(ctx, "OpenTelemetry shut down successfully")
 	}
 	return errors.Join(errs...)
 }

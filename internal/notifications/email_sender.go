@@ -95,11 +95,11 @@ func (es *EmailSender) SendReminderEmail(ctx context.Context, toEmail string, us
 	}
 
 	// Log the successful email sending.
-	slog.Info("Reminder email sent successfully",
-		slog.String("component", "email_service"),
-		slog.String("to", toEmail),
+	slog.InfoContext(ctx, "Reminder email sent",
 		slog.String("template", string(templateType)),
 		slog.String("subscription", subscription.Name),
+		slog.String("subscription_id", subscription.ID.Hex()),
+		slog.String("user_id", subscription.UserID.Hex()),
 	)
 
 	return nil
@@ -156,10 +156,10 @@ func (e *EmailSender) SendRenewalConfirmationEmail(
 		return fmt.Errorf("failed to send renewal confirmation email: %w", err)
 	}
 	// Log the successful email sending.
-	slog.Info("Renewal confirmation email sent successfully",
-		slog.String("component", "email_service"),
-		slog.String("to", userEmail),
+	slog.InfoContext(ctx, "Renewal confirmation email sent",
 		slog.String("subscription", subscription.Name),
+		slog.String("subscription_id", subscription.ID.Hex()),
+		slog.String("user_id", subscription.UserID.Hex()),
 	)
 	return nil
 }

@@ -43,16 +43,41 @@ func (h *RequestHandler) ServeRequest(req InternalRequest) {
 		return
 	}
 	if req.SuccessCode == 0 {
-		slog.Warn("SuccessCode not set, defaulting to 200")
+		slog.WarnContext(req.R.Context(), "SuccessCode not set, defaulting to 200",
+			slog.String("method", req.R.Method),
+			slog.String("path", req.R.URL.Path),
+		)
 		req.SuccessCode = http.StatusOK
 	}
 
 	respBodyObj, err := req.EndpointLogic()
 	if err != nil {
-		slog.Debug("Request failed", slog.String("error", err.Error()))
 		if appErr, ok := errors.AsType[apperror.AppError](err); ok {
-			WriteAPIResponse(req.W, appErr.Status(), map[string]string{"error": appErr.Message()})
+			status := appErr.Status()
+			if status >= 500 {
+				slog.ErrorContext(req.R.Context(), "Request failed",
+					slog.String("method", req.R.Method),
+					slog.String("path", req.R.URL.Path),
+					slog.Int("status", status),
+					slog.String("error_code", string(appErr.Code())),
+					slog.Any("error", err),
+				)
+			} else {
+				slog.WarnContext(req.R.Context(), "Request rejected",
+					slog.String("method", req.R.Method),
+					slog.String("path", req.R.URL.Path),
+					slog.Int("status", status),
+					slog.String("error_code", string(appErr.Code())),
+					slog.String("message", appErr.Message()),
+				)
+			}
+			WriteAPIResponse(req.W, status, map[string]string{"error": appErr.Message()})
 		} else {
+			slog.ErrorContext(req.R.Context(), "Unhandled request error",
+				slog.String("method", req.R.Method),
+				slog.String("path", req.R.URL.Path),
+				slog.Any("error", err),
+			)
 			WriteAPIResponse(req.W, http.StatusInternalServerError, nil)
 		}
 		return
@@ -66,9 +91,6 @@ func WriteAPIResponse(w http.ResponseWriter, statusCode int, res any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	if res != nil {
-		if err := json.NewEncoder(w).Encode(res); err != nil {
-			// Headers and status code are already sent; the response cannot be modified at this point.
-			slog.Error("Failed to encode response", slog.Any("error", err))
-		}
+		json.NewEncoder(w).Encode(res)
 	}
 }

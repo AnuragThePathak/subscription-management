@@ -15,21 +15,21 @@ type Database struct {
 
 // Shutdown gracefully disconnects the MongoDB client, respecting the provided context.
 func (db *Database) Shutdown(ctx context.Context) error {
-	slog.Info("Disconnecting MongoDB client", slog.String("component", "database"))
+	slog.InfoContext(ctx, "Disconnecting MongoDB client")
 	if err := db.Client.Disconnect(ctx); err != nil {
-		slog.Error("Failed to disconnect MongoDB client", slog.String("component", "database"), slog.Any("error", err))
+		slog.ErrorContext(ctx, "Failed to disconnect MongoDB client", slog.Any("error", err))
 		return err
 	}
-	slog.Info("MongoDB client disconnected successfully", slog.String("component", "database"))
+	slog.InfoContext(ctx, "MongoDB client disconnected successfully")
 	return nil
 }
 
 // Ping checks the connection to the MongoDB server.
 func (db *Database) Ping(ctx context.Context) error {
 	if err := db.Client.Ping(ctx, nil); err != nil {
-		slog.Error("MongoDB ping failed", slog.String("component", "database"), slog.Any("error", err))
+		slog.ErrorContext(ctx, "MongoDB ping failed", slog.Any("error", err))
 		return err
 	}
-	slog.Debug("MongoDB ping successful", slog.String("component", "database"))
+	slog.DebugContext(ctx, "MongoDB ping successful")
 	return nil
 }

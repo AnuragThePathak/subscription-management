@@ -18,8 +18,7 @@ func RateLimiter(rateLimiterService services.RateLimiterService) func(http.Handl
 			// Get the client's IP address.
 			ip, err := getClientIP(r)
 			if err != nil {
-				slog.Error("Failed to get client IP",
-					slog.String("component", "ratelimiter"),
+				slog.WarnContext(r.Context(), "Failed to get client IP",
 					slog.Any("error", err),
 				)
 				endpoint.WriteAPIResponse(w, http.StatusInternalServerError, nil)
@@ -29,8 +28,7 @@ func RateLimiter(rateLimiterService services.RateLimiterService) func(http.Handl
 			// Check if the request is allowed.
 			remaining, err := rateLimiterService.Allowed(r.Context(), ip)
 			if err != nil {
-				slog.Error("Rate limiter service error",
-					slog.String("component", "ratelimiter"),
+				slog.ErrorContext(r.Context(), "Rate limiter service error",
 					slog.String("ip", ip),
 					slog.Any("error", err),
 				)
@@ -45,8 +43,7 @@ func RateLimiter(rateLimiterService services.RateLimiterService) func(http.Handl
 				// Set retry header.
 				w.Header().Set("Retry-After", "60") // Suggest retry after 60 seconds.
 
-				slog.Info("Rate limit exceeded",
-					slog.String("component", "ratelimiter"),
+				slog.WarnContext(r.Context(), "Rate limit exceeded",
 					slog.String("ip", ip),
 					slog.Int("remaining", remaining),
 				)

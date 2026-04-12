@@ -21,20 +21,20 @@ func (s *Scheduler) Shutdown(ctx context.Context) error {
 	closeChan := make(chan error, 1)
 
 	go func() {
-		slog.Info("Stopping subscription scheduler", slog.String("component", "scheduler"))
+		slog.InfoContext(ctx, "Stopping subscription scheduler")
 		closeChan <- s.Scheduler.Close()
 	}()
 
 	select {
 	case err := <-closeChan:
 		if err != nil {
-			slog.Error("Failed to stop subscription scheduler", slog.String("component", "scheduler"), slog.Any("error", err))
+			slog.ErrorContext(ctx, "Failed to stop subscription scheduler", slog.Any("error", err))
 		} else {
-			slog.Info("Subscription scheduler stopped successfully", slog.String("component", "scheduler"))
+			slog.InfoContext(ctx, "Subscription scheduler stopped successfully")
 		}
 		return err
 	case <-ctx.Done():
-		slog.Warn("Context expired while stopping subscription scheduler", slog.String("component", "scheduler"))
+		slog.WarnContext(ctx, "Context expired while stopping subscription scheduler")
 		return ctx.Err()
 	}
 }

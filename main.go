@@ -29,76 +29,62 @@ import (
 )
 
 func main() {
+	startupStart := time.Now()
 	var err error
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
 
 	var cf *config.Config
 	{
-		if cf, err = config.LoadConfig(); err != nil {
-			slog.Error("Failed to load config",
-				slog.String("component", "main"),
-				slog.Any("error", err),
-			)
+		if cf, err = config.LoadConfig(ctx); err != nil {
+			slog.ErrorContext(ctx, "Failed to load config", slog.Any("error", err))
 			os.Exit(1)
 		}
 	}
 
-	// Configure the default slog logger
-	config.SetupLogger(cf.Env, cf.OTel.Enabled)
+	// Configure the default slog logger.
+	if err = config.SetupLogger(ctx, cf.Env, cf.OTel.Enabled); err != nil {
+		slog.ErrorContext(ctx, "Failed to configure logger", slog.Any("error", err))
+		os.Exit(1)
+	}
+
+	slog.InfoContext(ctx, "Starting Subscription Management Service",
+		slog.String("environment", cf.Env),
+		slog.Int("port", cf.Server.Port),
+	)
 
 	// Initialize OpenTelemetry (must be after logger, before DB/Redis so future phases can trace them).
 	var otelProvider *observability.Provider
 	if cf.OTel.Enabled {
 		cf.OTel.Environment = cf.Env
 		if otelProvider, err = observability.InitOTel(ctx, cf.OTel); err != nil {
-			slog.Error("Failed to initialize OpenTelemetry",
-				slog.String("component", "main"),
-				slog.Any("error", err),
-			)
+			slog.ErrorContext(ctx, "Failed to initialize OpenTelemetry", slog.Any("error", err))
 			os.Exit(1)
 		}
 	} else {
-		slog.Info("OpenTelemetry disabled", slog.String("component", "main"))
+		slog.InfoContext(ctx, "OpenTelemetry disabled")
 	}
-
-	// Improved logging for startup
-	slog.Info("Starting Subscription Management Service",
-		slog.String("environment", cf.Env),
-		slog.Int("port", cf.Server.Port),
-	)
 
 	// Initialize the database client
 	var database *adapters.Database
 	{
-		if database, err = config.DatabaseConnection(cf.Database, cf.OTel.Enabled); err != nil {
-			slog.Error("Failed to initialize database client",
-				slog.String("component", "main"),
-				slog.Any("error", err),
-			)
+		if database, err = config.DatabaseConnection(ctx, cf.Database, cf.OTel.Enabled); err != nil {
+			slog.ErrorContext(ctx, "Failed to initialize database client", slog.Any("error", err))
 			os.Exit(1)
 		}
 		if err = database.Ping(ctx); err != nil {
-			slog.Error("Failed to connect to database",
-				slog.String("component", "main"),
-				slog.Any("error", err),
-			)
+			slog.ErrorContext(ctx, "Failed to connect to database", slog.Any("error", err))
 			os.Exit(1)
 		}
 	}
 
 	var redis *adapters.Redis
 	{
-		redis = config.RedisConnection(cf.Redis, cf.OTel.Enabled)
+		redis = config.RedisConnection(ctx, cf.Redis, cf.OTel.Enabled)
 		if err = redis.Ping(ctx); err != nil {
-			slog.Error("Failed to connect to Redis",
-				slog.String("component", "main"),
-				slog.Any("error", err),
-			)
+			slog.ErrorContext(ctx, "Failed to connect to Redis", slog.Any("error", err))
 			os.Exit(1)
 		}
-
-		// _ = redis.Client.FlushDB(ctx).Err()
 	}
 
 	redisRateLimiter := redis_rate.NewLimiter(redis.Client)
@@ -108,41 +94,27 @@ func main() {
 	var billRepository repositories.BillRepository
 	{
 		if userRepository, err = repositories.NewUserRepository(ctx, database.DB); err != nil {
-			slog.Error("Failed to create user repository",
-				slog.String("component", "main"),
-				slog.Any("error", err),
-			)
+			slog.ErrorContext(ctx, "Failed to create user repository", slog.Any("error", err))
 			os.Exit(1)
 		}
-
 		if subscriptionRepository, err = repositories.NewSubscriptionRepository(ctx, database.DB); err != nil {
-			slog.Error("Failed to create subscription repository",
-				slog.String("component", "main"),
-				slog.Any("error", err),
-			)
+			slog.ErrorContext(ctx, "Failed to create subscription repository", slog.Any("error", err))
 			os.Exit(1)
 		}
-
 		if billRepository, err = repositories.NewBillRepository(ctx, database.DB); err != nil {
-			slog.Error("Failed to create bill repository",
-				slog.String("component", "main"),
-				slog.Any("error", err),
-			)
+			slog.ErrorContext(ctx, "Failed to create bill repository", slog.Any("error", err))
 			os.Exit(1)
 		}
 	}
 
-	appRateLimiterService := services.NewRateLimiterService(redisRateLimiter, config.NewRateLimit(&cf.RateLimiter.App), "app")
+	appRateLimiterService := services.NewRateLimiterService(redisRateLimiter, config.NewRateLimit(ctx, &cf.RateLimiter.App), "app")
 	jwtService := services.NewJWTService(cf.JWT)
 
 	var metricsPort services.SubscriptionMetrics
 	if cf.OTel.Enabled {
 		metricsPort, err = observability.NewMetricsAdapter(cf.OTel)
 		if err != nil {
-			slog.Error("Failed to initialize OpenTelemetry business metrics adater",
-				slog.String("component", "main"),
-				slog.Any("error", err),
-			)
+			slog.ErrorContext(ctx, "Failed to initialize business metrics adapter", slog.Any("error", err))
 			os.Exit(1)
 		}
 	} else {
@@ -161,26 +133,26 @@ func main() {
 			sch := scheduler.NewSubscriptionScheduler(
 				subscriptionService,
 				redis.Client,
-				config.QueueRedisConfig(cf.Redis),
+				config.QueueRedisConfig(ctx, cf.Redis),
 				cf.Scheduler.Interval,
 				cf.Scheduler.ReminderDays,
 				cf.Scheduler.Name,
 			)
 			go func() {
 				if startErr := sch.Start(ctx); startErr != nil && startErr != context.Canceled {
-					slog.Error("Scheduler failed",
-						slog.String("component", "main"),
-						slog.Any("error", startErr),
-					)
+					slog.ErrorContext(ctx, "Scheduler failed", slog.Any("error", startErr))
 				}
 			}()
 
 			schedulerAdapter = &adapters.Scheduler{
 				Scheduler: sch,
 			}
-			slog.Info("Scheduler started", slog.String("env", cf.Env))
+			slog.InfoContext(ctx, "Scheduler started",
+				slog.String("env", cf.Env),
+				slog.Duration("interval", cf.Scheduler.Interval),
+			)
 		} else {
-			slog.Info("Scheduler skipped due to environment config", slog.String("env", cf.Env))
+			slog.InfoContext(ctx, "Scheduler skipped", slog.String("env", cf.Env))
 		}
 
 		if slices.Contains(cf.QueueWorker.EnabledForEnv, cf.Env) {
@@ -189,26 +161,26 @@ func main() {
 				userService,
 				notifications.NewEmailSender(cf.Email),
 				redis.Client,
-				config.QueueRedisConfig(cf.Redis),
+				config.QueueRedisConfig(ctx, cf.Redis),
 				cf.QueueWorker.Concurrency,
 				cf.QueueWorker.QueueName,
 				cf.QueueWorker.Name,
 			)
 			go func() {
 				if startErr := worker.Start(ctx); startErr != nil && startErr != context.Canceled {
-					slog.Error("Worker failed",
-						slog.String("component", "main"),
-						slog.Any("error", startErr),
-					)
+					slog.ErrorContext(ctx, "Queue worker failed", slog.Any("error", startErr))
 				}
 			}()
 
 			schedulerWorkerAdapter = &adapters.SchedulerWorker{
 				Worker: worker,
 			}
-			slog.Info("Worker started", slog.String("env", cf.Env))
+			slog.InfoContext(ctx, "Queue worker started",
+				slog.String("env", cf.Env),
+				slog.Int("concurrency", cf.QueueWorker.Concurrency),
+			)
 		} else {
-			slog.Info("Worker skipped due to environment config", slog.String("env", cf.Env))
+			slog.InfoContext(ctx, "Queue worker skipped", slog.String("env", cf.Env))
 		}
 	}
 
@@ -278,11 +250,13 @@ func main() {
 		}
 	}
 
+	slog.InfoContext(ctx, "Service ready", slog.Duration("startup_time", time.Since(startupStart)))
+
 	apiServer.StartWithGracefulShutdown(
 		ctx,
 		10*time.Second,
 		cleanupHandlers...,
 	)
 
-	slog.Info("Server shutdown completed")
+	slog.Info("Service shutdown completed")
 }

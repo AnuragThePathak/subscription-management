@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 
@@ -8,7 +9,7 @@ import (
 )
 
 // LoadConfig loads the application configuration from a YAML file or environment variables.
-func LoadConfig() (*Config, error) {
+func LoadConfig(ctx context.Context) (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
@@ -34,7 +35,7 @@ func LoadConfig() (*Config, error) {
 
 	// Read the YAML configuration file.
 	if err := viper.ReadInConfig(); err != nil {
-		slog.Warn("Config file not found, using defaults", slog.String("error", err.Error()))
+		slog.WarnContext(ctx, "Config file not found, using defaults", slog.Any("error", err))
 	}
 
 	// Enable environment variables to override config file settings.
@@ -43,14 +44,14 @@ func LoadConfig() (*Config, error) {
 
 	var config Config
 	if err := viper.Unmarshal(&config); err != nil {
-		slog.Error("Failed to unmarshal configuration", slog.String("error", err.Error()))
+		slog.ErrorContext(ctx, "Failed to unmarshal configuration", slog.Any("error", err))
 		return nil, err
 	}
 	if err := config.Validate(); err != nil {
-		slog.Error("Configuration validation failed", slog.String("error", err.Error()))
+		slog.ErrorContext(ctx, "Configuration validation failed", slog.Any("error", err))
 		return nil, err
 	}
-	slog.Info("Configuration loaded successfully")
+	slog.InfoContext(ctx, "Configuration loaded successfully")
 	return &config, nil
 }
 

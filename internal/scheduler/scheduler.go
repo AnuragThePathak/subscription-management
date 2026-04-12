@@ -86,8 +86,7 @@ func (s *SubscriptionScheduler) Start(ctx context.Context) error {
 
 	// Run once immediately.
 	if err := s.pollSubscriptions(ctx); err != nil {
-		slog.Error("Failed initial subscription polling",
-			slog.String("component", "scheduler"),
+		slog.WarnContext(ctx, "Initial subscription poll failed (will retry on next tick)",
 			slog.Any("error", err),
 		)
 	}
@@ -98,8 +97,7 @@ func (s *SubscriptionScheduler) Start(ctx context.Context) error {
 			return ctx.Err()
 		case <-ticker.C:
 			if err := s.pollSubscriptions(ctx); err != nil {
-				slog.Error("Failed to poll subscriptions",
-					slog.String("component", "scheduler"),
+				slog.ErrorContext(ctx, "Subscription poll failed",
 					slog.Any("error", err),
 				)
 			}
@@ -119,15 +117,13 @@ func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
 	)
 	defer span.End()
 
-	slog.Info("Polling for subscriptions requiring reminders and renewals",
-		slog.String("component", "scheduler"))
+	slog.InfoContext(ctx, "Polling subscriptions")
 
 	var errs []error
 
 	// Handle reminder tasks
 	if err := s.handleReminderTasks(ctx); err != nil {
-		slog.Error("Failed to handle reminder tasks",
-			slog.String("component", "scheduler"),
+		slog.ErrorContext(ctx, "Reminder tasks failed",
 			slog.Any("error", err),
 		)
 		errs = append(errs, err)
@@ -135,8 +131,7 @@ func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
 
 	// Handle renewal tasks
 	if err := s.handleRenewalTasks(ctx); err != nil {
-		slog.Error("Failed to handle renewal tasks",
-			slog.String("component", "scheduler"),
+		slog.ErrorContext(ctx, "Renewal tasks failed",
 			slog.Any("error", err),
 		)
 		errs = append(errs, err)
@@ -144,8 +139,7 @@ func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
 
 	// Handle expiration tasks
 	if err := s.handleExpirationTasks(ctx); err != nil {
-		slog.Error("Failed to handle expiration tasks",
-			slog.String("component", "scheduler"),
+		slog.ErrorContext(ctx, "Expiration tasks failed",
 			slog.Any("error", err),
 		)
 		errs = append(errs, err)
@@ -161,16 +155,15 @@ func (s *SubscriptionScheduler) handleReminderTasks(ctx context.Context) error {
 		return err
 	}
 
+	scheduled := 0
 	// Check each subscription for upcoming renewal dates.
 	for _, subscription := range activeSubscriptions {
 		daysBefore := lib.DaysBetween(time.Now(), subscription.ValidTill, nil)
 		redisKey := fmt.Sprintf("reminder_sent:%s:%d", subscription.ID.Hex(), daysBefore)
 		exists, err := s.redisClient.Exists(ctx, redisKey).Result()
 		if err != nil {
-			slog.Error("Failed to check Redis for sent reminder",
-				slog.String("component", "scheduler"),
+			slog.ErrorContext(ctx, "Failed to check Redis for sent reminder",
 				slog.String("subscription_id", subscription.ID.Hex()),
-				slog.Int("days_before", daysBefore),
 				slog.Any("error", err),
 			)
 			continue
@@ -178,26 +171,20 @@ func (s *SubscriptionScheduler) handleReminderTasks(ctx context.Context) error {
 
 		if exists == 0 { // Key does not exist, reminder not sent recently.
 			if err := s.scheduleReminderTask(ctx, subscription, daysBefore); err != nil {
-				slog.Error("Failed to schedule reminder task",
-					slog.String("component", "scheduler"),
+				slog.ErrorContext(ctx, "Failed to schedule reminder task",
 					slog.String("subscription_id", subscription.ID.Hex()),
-					slog.Int("days_before", daysBefore),
 					slog.Any("error", err),
 				)
 			} else {
-				slog.Info("Scheduled reminder task",
-					slog.String("component", "scheduler"),
-					slog.String("subscription_id", subscription.ID.Hex()),
-					slog.Int("days_before", daysBefore),
-				)
+				scheduled++
 			}
-		} else {
-			slog.Info("Reminder already sent recently (Redis)",
-				slog.String("component", "scheduler"),
-				slog.String("subscription_id", subscription.ID.Hex()),
-				slog.Int("days_before", daysBefore),
-			)
 		}
+	}
+
+	if scheduled > 0 {
+		slog.InfoContext(ctx, "Reminder tasks scheduled",
+			slog.Int("count", scheduled),
+		)
 	}
 
 	return nil
@@ -210,25 +197,22 @@ func (s *SubscriptionScheduler) handleRenewalTasks(ctx context.Context) error {
 		return err
 	}
 
-	slog.Info("Found subscriptions due for renewal",
-		slog.String("component", "scheduler"),
-		slog.Int("count", len(renewalSubscriptions)))
-
-	// Schedule renewal tasks for each subscription approaching renewal
+	scheduled := 0
 	for _, subscription := range renewalSubscriptions {
 		if err := s.scheduleRenewalTask(ctx, subscription); err != nil {
-			slog.Error("Failed to schedule renewal task",
-				slog.String("component", "scheduler"),
+			slog.ErrorContext(ctx, "Failed to schedule renewal task",
 				slog.String("subscription_id", subscription.ID.Hex()),
 				slog.Any("error", err),
 			)
 		} else {
-			slog.Info("Scheduled renewal task",
-				slog.String("component", "scheduler"),
-				slog.String("subscription_id", subscription.ID.Hex()),
-				slog.String("renewal_date", subscription.ValidTill.Format(time.RFC3339)),
-			)
+			scheduled++
 		}
+	}
+
+	if scheduled > 0 {
+		slog.InfoContext(ctx, "Renewal tasks scheduled",
+			slog.Int("count", scheduled),
+		)
 	}
 
 	return nil
@@ -241,25 +225,22 @@ func (s *SubscriptionScheduler) handleExpirationTasks(ctx context.Context) error
 		return err
 	}
 
-	slog.Info("Found subscriptions due for expiration check",
-		slog.String("component", "scheduler"),
-		slog.Int("count", len(expiringSubscriptions)))
-
-	// Schedule expiration tasks for each subscription
+	scheduled := 0
 	for _, subscription := range expiringSubscriptions {
 		if err := s.scheduleExpirationTask(ctx, subscription); err != nil {
-			slog.Error("Failed to schedule expiration task",
-				slog.String("component", "scheduler"),
+			slog.ErrorContext(ctx, "Failed to schedule expiration task",
 				slog.String("subscription_id", subscription.ID.Hex()),
 				slog.Any("error", err),
 			)
 		} else {
-			slog.Info("Scheduled expiration task",
-				slog.String("component", "scheduler"),
-				slog.String("subscription_id", subscription.ID.Hex()),
-				slog.String("valid_till", subscription.ValidTill.Format(time.RFC3339)),
-			)
+			scheduled++
 		}
+	}
+
+	if scheduled > 0 {
+		slog.InfoContext(ctx, "Expiration tasks scheduled",
+			slog.Int("count", scheduled),
+		)
 	}
 
 	return nil
@@ -313,8 +294,7 @@ func (s *SubscriptionScheduler) scheduleReminderTask(ctx context.Context, subscr
 		return fmt.Errorf("failed to enqueue task: %w", err)
 	}
 
-	slog.Info("Reminder task scheduled",
-		slog.String("component", "scheduler"),
+	slog.DebugContext(ctx, "Reminder task enqueued",
 		slog.String("task_id", info.ID),
 		slog.String("subscription_id", subscription.ID.Hex()),
 		slog.Int("days_before", daysBefore),
@@ -358,8 +338,7 @@ func (s *SubscriptionScheduler) scheduleRenewalTask(ctx context.Context, subscri
 		return fmt.Errorf("failed to enqueue task: %w", err)
 	}
 
-	slog.Info("Renewal task scheduled",
-		slog.String("component", "scheduler"),
+	slog.DebugContext(ctx, "Renewal task enqueued",
 		slog.String("task_id", info.ID),
 		slog.String("subscription_id", subscription.ID.Hex()),
 		slog.String("process_at", processAt.Format(time.RFC3339)),
@@ -395,8 +374,7 @@ func (s *SubscriptionScheduler) scheduleExpirationTask(ctx context.Context, subs
 		return fmt.Errorf("failed to enqueue task: %w", err)
 	}
 
-	slog.Info("Expiration task scheduled",
-		slog.String("component", "scheduler"),
+	slog.DebugContext(ctx, "Expiration task enqueued",
 		slog.String("task_id", info.ID),
 		slog.String("subscription_id", subscription.ID.Hex()),
 	)

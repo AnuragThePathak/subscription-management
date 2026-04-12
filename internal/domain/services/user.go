@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/apperror"
@@ -73,7 +74,13 @@ func (us *userService) CreateUser(ctx context.Context, user *models.User) (*mode
 	user.UpdatedAt = now
 
 	// Insert into database
-	return us.userRepository.Create(ctx, user)
+	result, err := us.userRepository.Create(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+
+	slog.InfoContext(ctx, "User created", slog.String("user_id", result.ID.Hex()))
+	return result, nil
 }
 
 func (us *userService) GetAllUsers(ctx context.Context) ([]*models.User, error) {
@@ -154,7 +161,13 @@ func (us *userService) UpdateUser(ctx context.Context, id string, updateReq *mod
 	existingUser.UpdatedAt = time.Now()
 
 	// Save the updated user
-	return us.userRepository.Update(ctx, existingUser)
+	result, err := us.userRepository.Update(ctx, existingUser)
+	if err != nil {
+		return nil, err
+	}
+
+	slog.DebugContext(ctx, "User updated", slog.String("user_id", existingUser.ID.Hex()))
+	return result, nil
 }
 
 func (us *userService) DeleteUser(ctx context.Context, id string, claimedUserID string) error {
@@ -182,7 +195,12 @@ func (us *userService) DeleteUser(ctx context.Context, id string, claimedUserID 
 	}
 
 	// Delete the user
-	return us.userRepository.Delete(ctx, userID)
+	if err = us.userRepository.Delete(ctx, userID); err != nil {
+		return err
+	}
+
+	slog.InfoContext(ctx, "User deleted", slog.String("user_id", id))
+	return nil
 }
 
 func (us *userService) FetchUserByIDInternal(ctx context.Context, id bson.ObjectID) (*models.User, error) {

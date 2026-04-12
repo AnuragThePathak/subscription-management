@@ -1,8 +1,11 @@
 package config
 
 import (
+	"context"
+	"fmt"
 	"io"
 	"log/slog"
+	"net/url"
 	"os"
 	"time"
 
@@ -18,7 +21,7 @@ import (
 )
 
 // DatabaseConnection establishes a connection to the MongoDB database.
-func DatabaseConnection(dbConfig DatabaseConfig, otelEnabled bool) (*adapters.Database, error) {
+func DatabaseConnection(ctx context.Context, dbConfig DatabaseConfig, otelEnabled bool) (*adapters.Database, error) {
 	dbClientOpts := options.Client().ApplyURI(dbConfig.URL)
 	if otelEnabled {
 		dbClientOpts.SetMonitor(otelmongo.NewMonitor())
@@ -27,16 +30,22 @@ func DatabaseConnection(dbConfig DatabaseConfig, otelEnabled bool) (*adapters.Da
 	db := adapters.Database{}
 	var err error
 	if db.Client, err = mongo.Connect(dbClientOpts); err != nil {
-		slog.Error("Failed to initialize MongoDB client", slog.String("url", dbConfig.URL), slog.String("error", err.Error()))
+		slog.ErrorContext(ctx, "Failed to initialize MongoDB client",
+			slog.String("host", redactURL(dbConfig.URL)),
+			slog.Any("error", err),
+		)
 		return nil, err
 	}
 	db.DB = db.Client.Database(dbConfig.Name)
-	slog.Info("Initialized MongoDB client", slog.String("database", dbConfig.Name))
+	slog.InfoContext(ctx, "Initialized MongoDB client",
+		slog.String("host", redactURL(dbConfig.URL)),
+		slog.String("database", dbConfig.Name),
+	)
 	return &db, nil
 }
 
 // RedisConnection establishes a connection to the Redis database.
-func RedisConnection(redisConfig RedisConfig, otelEnabled bool) *adapters.Redis {
+func RedisConnection(ctx context.Context, redisConfig RedisConfig, otelEnabled bool) *adapters.Redis {
 	rdb := adapters.Redis{}
 	rdb.Client = redis.NewClient(&redis.Options{
 		Addr:     redisConfig.URL,
@@ -46,7 +55,7 @@ func RedisConnection(redisConfig RedisConfig, otelEnabled bool) *adapters.Redis 
 
 	if otelEnabled {
 		if err := redisotel.InstrumentTracing(rdb.Client); err != nil {
-			slog.Error("Failed to instrument Redis with tracing", slog.Any("error", err))
+			slog.ErrorContext(ctx, "Failed to instrument Redis with tracing", slog.Any("error", err))
 		}
 	}
 
@@ -61,7 +70,8 @@ func RedisConnection(redisConfig RedisConfig, otelEnabled bool) *adapters.Redis 
 //
 // When OTel is enabled, logs are written as JSON to both stderr and
 // ./logs/app.log (for Promtail to tail and ship to Loki).
-func SetupLogger(env string, otelEnabled bool) {
+// ./logs/app.log (for Promtail to tail and ship to Loki).
+func SetupLogger(ctx context.Context, env string, otelEnabled bool) error {
 	programLevel := new(slog.LevelVar)
 	if env == "production" {
 		programLevel.Set(slog.LevelInfo)
@@ -76,23 +86,26 @@ func SetupLogger(env string, otelEnabled bool) {
 		writers := []io.Writer{os.Stderr}
 
 		if err := os.MkdirAll("logs", 0o755); err != nil {
-			slog.Error("Failed to create logs directory", slog.Any("error", err))
+			return fmt.Errorf("failed to create logs directory: %w", err)
 		} else if logFile, err := os.OpenFile("logs/app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err != nil {
-			slog.Error("Failed to open log file", slog.Any("error", err))
+			return fmt.Errorf("failed to open log file: %w", err)
 		} else {
 			writers = append(writers, logFile)
 		}
 
 		handler = slog.NewJSONHandler(io.MultiWriter(writers...), &slog.HandlerOptions{
-			Level: programLevel,
+			Level:     programLevel,
+			AddSource: true,
 		})
 	} else if env == "production" {
 		handler = slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
-			Level: programLevel,
+			Level:     programLevel,
+			AddSource: true,
 		})
 	} else {
 		handler = slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-			Level: programLevel,
+			Level:     programLevel,
+			AddSource: true,
 		})
 	}
 
@@ -100,18 +113,19 @@ func SetupLogger(env string, otelEnabled bool) {
 	handler = observability.NewTraceHandler(handler)
 
 	slog.SetDefault(slog.New(handler))
-	slog.Info("Logger initialized", slog.String("environment", env))
+	slog.InfoContext(ctx, "Logger initialized", slog.String("environment", env))
+	return nil
 }
 
 // NewRateLimit creates a rate limiter configuration.
-func NewRateLimit(rateConfig *RateLimiterConfig) *redis_rate.Limit {
+func NewRateLimit(ctx context.Context, rateConfig *RateLimiterConfig) *redis_rate.Limit {
 	if rateConfig.Burst == 0 {
 		rateConfig.Burst = rateConfig.Rate
 	}
 	if rateConfig.Period == 0 {
 		rateConfig.Period = time.Minute
 	}
-	slog.Debug("Rate limiter configured", slog.Int("rate", rateConfig.Rate), slog.Int("burst", rateConfig.Burst), slog.Duration("period", rateConfig.Period))
+	slog.InfoContext(ctx, "Rate limiter configured", slog.Int("rate", rateConfig.Rate), slog.Int("burst", rateConfig.Burst), slog.Duration("period", rateConfig.Period))
 
 	return &redis_rate.Limit{
 		Rate:   rateConfig.Rate,
@@ -121,11 +135,24 @@ func NewRateLimit(rateConfig *RateLimiterConfig) *redis_rate.Limit {
 }
 
 // QueueRedisConfig returns Redis configuration for the task queue.
-func QueueRedisConfig(redisConfig RedisConfig) *asynq.RedisClientOpt {
-	slog.Debug("Queue Redis configuration initialized", slog.String("url", redisConfig.URL), slog.Int("db", redisConfig.DB))
+func QueueRedisConfig(ctx context.Context, redisConfig RedisConfig) *asynq.RedisClientOpt {
+	slog.DebugContext(ctx, "Queue Redis configuration initialized",
+		slog.String("addr", redactURL(redisConfig.URL)),
+		slog.Int("db", redisConfig.DB),
+	)
 	return &asynq.RedisClientOpt{
 		Addr:     redisConfig.URL,
 		Password: redisConfig.Password,
 		DB:       redisConfig.DB,
 	}
+}
+
+// redactURL strips credentials from a connection string, returning only the host.
+// Falls back to the raw value if parsing fails.
+func redactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return "<unparseable>"
+	}
+	return u.Host
 }

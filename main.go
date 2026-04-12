@@ -194,9 +194,6 @@ func main() {
 	{
 		// Setup router
 		r := chi.NewRouter()
-
-		r.Use(middleware.Recoverer)
-		r.Use(middlewares.Timeout(cf.Server.RequestTimeout))
 		
 		// Observability: Prometheus metrics endpoint — always exposed so
 		// infrastructure tooling (healthchecks, Prometheus) can scrape it
@@ -213,7 +210,9 @@ func main() {
 			if cf.OTel.Enabled {
 				r.Use(middlewares.OTel(cf.OTel.ServiceName))
 			}
+			r.Use(middleware.Recoverer)
 			r.Use(middleware.Logger)
+			r.Use(middlewares.Timeout(cf.Server.RequestTimeout))
 			r.Use(middlewares.RateLimiter(appRateLimiterService))
 
 			// Setup routes

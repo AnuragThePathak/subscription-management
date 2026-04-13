@@ -179,12 +179,6 @@ func (us *userService) DeleteUser(ctx context.Context, id string, claimedUserID 
 		return apperror.NewUnauthorizedError("Invalid user ID")
 	}
 
-	// Check if user exists before attempting to delete
-	_, err = us.userRepository.FindByID(ctx, userID)
-	if err != nil {
-		return err
-	}
-
 	// Check if user has any active subscriptions
 	hasActive, err := us.subscriptionServiceInternal.HasActiveSubscriptionsInternal(ctx, userID)
 	if err != nil {

@@ -28,7 +28,7 @@ func (h *traceHandler) Enabled(ctx context.Context, level slog.Level) bool {
 
 func (h *traceHandler) Handle(ctx context.Context, record slog.Record) error {
 	// Add user ID to the log record if available
-	if userID, err := lib.GetUserID(ctx); err == nil {
+	if userID, ok := lib.GetUserID(ctx); ok {
 		record.AddAttrs(slog.String("user_id", userID))
 	}
 

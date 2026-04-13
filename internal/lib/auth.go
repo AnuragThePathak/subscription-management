@@ -2,8 +2,6 @@ package lib
 
 import (
 	"context"
-
-	"github.com/anuragthepathak/subscription-management/internal/api/shared/apperror"
 )
 
 type contextKey string
@@ -14,19 +12,13 @@ const (
 )
 
 // GetUserID retrieves the authenticated user ID from the context.
-func GetUserID(ctx context.Context) (string, error) {
+func GetUserID(ctx context.Context) (string, bool) {
 	id, ok := ctx.Value(UserIDKey).(string)
-	if !ok {
-		return "", apperror.NewUnauthorizedError("User ID not found in context")
-	}
-	return id, nil
+	return id, ok
 }
 
 // GetUserEmail retrieves the authenticated user email from the context.
-func GetUserEmail(ctx context.Context) (string, error) {
+func GetUserEmail(ctx context.Context) (string, bool) {
 	email, ok := ctx.Value(UserEmailKey).(string)
-	if !ok {
-		return "", apperror.NewUnauthorizedError("User email not found in context")
-	}
-	return email, nil
+	return email, ok
 }

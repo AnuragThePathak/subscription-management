@@ -14,7 +14,7 @@ scrape_configs:
     - targets:
         - localhost
       labels:
-        job: subscription-service
+        job: subscription-management
         __path__: /var/log/app/app.log
     pipeline_stages:
     - json:

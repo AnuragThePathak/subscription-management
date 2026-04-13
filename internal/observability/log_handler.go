@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/anuragthepathak/subscription-management/internal/lib"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -26,6 +27,12 @@ func (h *traceHandler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 func (h *traceHandler) Handle(ctx context.Context, record slog.Record) error {
+	// Add user ID to the log record if available
+	if userID, err := lib.GetUserID(ctx); err == nil {
+		record.AddAttrs(slog.String("user_id", userID))
+	}
+
+	// Add trace ID and span ID to the log record if available
 	spanCtx := trace.SpanContextFromContext(ctx)
 	if spanCtx.IsValid() {
 		record.AddAttrs(

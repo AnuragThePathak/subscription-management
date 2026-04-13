@@ -10,6 +10,8 @@ import (
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/anuragthepathak/subscription-management/internal/domain/services"
 	"github.com/anuragthepathak/subscription-management/internal/lib"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Authentication validates JWT tokens and adds user claims to the request context.
@@ -39,6 +41,12 @@ func Authentication(jwtService services.JWTService) func(next http.Handler) http
 			// Add user claims to context.
 			ctx := context.WithValue(r.Context(), lib.UserIDKey, claims.UserID)
 			ctx = context.WithValue(ctx, lib.UserEmailKey, claims.Email)
+
+			// Add user ID to the span if available
+			span := trace.SpanFromContext(ctx)
+			if span.IsRecording() {
+				span.SetAttributes(semconv.UserID(claims.UserID))
+			}
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

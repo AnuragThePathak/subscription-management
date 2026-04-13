@@ -60,7 +60,7 @@ func NewReminderWorker(
 }
 
 // Start begins processing tasks from the queue.
-func (w *ReminderWorker) Start(ctx context.Context) error {
+func (w *ReminderWorker) Start() error {
 	// Register task handlers.
 	mux := asynq.NewServeMux()
 	
@@ -70,9 +70,6 @@ func (w *ReminderWorker) Start(ctx context.Context) error {
 	mux.HandleFunc(ReminderTask, w.handleSubscriptionReminder)
 	mux.HandleFunc(RenewalTask, w.handleSubscriptionRenewal)
 	mux.HandleFunc(ExpirationTask, w.handleSubscriptionExpiration)
-
-	// Start the worker server.
-	slog.InfoContext(ctx, "Starting queue worker")
 
 	return w.server.Start(mux)
 }

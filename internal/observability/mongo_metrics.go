@@ -17,14 +17,14 @@ type MongoMetricsMonitor struct {
 	starts    sync.Map
 }
 
-func NewMongoMetricsMonitor(ctx context.Context) *event.CommandMonitor {
+func NewMongoMetricsMonitor() *event.CommandMonitor {
 	meter := otel.Meter("mongo-driver")
 	hist, err := meter.Float64Histogram(
 		"db_query_duration_seconds",
 		metric.WithDescription("MongoDB query duration in seconds"),
 	)
 	if err != nil {
-		slog.ErrorContext(ctx, "failed to create db_query_duration_seconds histogram", slog.Any("error", err))
+		slog.Error("failed to create db_query_duration_seconds histogram", slog.Any("error", err))
 		return &event.CommandMonitor{}
 	}
 

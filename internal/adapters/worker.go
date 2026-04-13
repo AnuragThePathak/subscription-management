@@ -21,17 +21,17 @@ func (w *SchedulerWorker) Shutdown(ctx context.Context) error {
 	closeChan := make(chan error, 1)
 
 	go func() {
-		slog.InfoContext(ctx, "Stopping queue worker")
+		slog.Info("Stopping queue worker")
 		w.Worker.Stop()
 		close(closeChan)
 	}()
 
 	select {
 	case <-closeChan:
-		slog.InfoContext(ctx, "Queue worker stopped successfully")
+		slog.Info("Queue worker stopped successfully")
 		return nil
 	case <-ctx.Done():
-		slog.WarnContext(ctx, "Context expired while stopping queue worker")
+		slog.Warn("Context expired while stopping queue worker")
 		return ctx.Err()
 	}
 }

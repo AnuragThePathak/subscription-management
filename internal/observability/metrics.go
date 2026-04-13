@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/anuragthepathak/subscription-management/internal/domain/services"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
 )
 
 // OTelMetricsAdapter bridges the strictly typed domain metrics interface
@@ -19,7 +19,7 @@ type OTelMetricsAdapter struct {
 
 // NewMetricsAdapter generates the OpenTelemetry adapter with dynamic
 // metric names and descriptions sourced from the configuration variables.
-func NewMetricsAdapter(cfg Config) (services.SubscriptionMetrics, error) {
+func NewMetricsAdapter(cfg Config) (*OTelMetricsAdapter, error) {
 	meter := otel.Meter(cfg.ServiceName)
 
 	createdCounter, err := meter.Int64Counter(
@@ -69,15 +69,17 @@ func (o *OTelMetricsAdapter) DecActiveSubscriptions(ctx context.Context) {
 	o.active.Add(ctx, -1)
 }
 
-// NoOpMetricsAdapter is a dummy implementation used when telemetry is disabled,
-// ensuring the domain service never panics on a nil interface call.
-type NoOpMetricsAdapter struct{}
-
-func NewNoOpMetricsAdapter() services.SubscriptionMetrics {
-	return &NoOpMetricsAdapter{}
+// NewNoOpMetricsAdapter returns an *OTelMetricsAdapter backed by OTel's
+// built-in noop instruments. All method calls are safe no-ops, keeping the
+// domain layer free of nil checks while avoiding a separate type.
+func NewNoOpMetricsAdapter() *OTelMetricsAdapter {
+	meter := noop.NewMeterProvider().Meter("noop")
+	created, _ := meter.Int64Counter("noop")
+	canceled, _ := meter.Int64Counter("noop")
+	active, _ := meter.Int64UpDownCounter("noop")
+	return &OTelMetricsAdapter{
+		created:  created,
+		canceled: canceled,
+		active:   active,
+	}
 }
-
-func (n *NoOpMetricsAdapter) IncSubscriptionsCreated(ctx context.Context)  {}
-func (n *NoOpMetricsAdapter) IncSubscriptionsCanceled(ctx context.Context) {}
-func (n *NoOpMetricsAdapter) IncActiveSubscriptions(ctx context.Context)   {}
-func (n *NoOpMetricsAdapter) DecActiveSubscriptions(ctx context.Context)   {}

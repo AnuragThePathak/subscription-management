@@ -80,25 +80,25 @@ func InitOTel(ctx context.Context, cfg Config) (*Provider, error) {
 
 // Shutdown flushes and shuts down all OTel providers.
 func (p *Provider) Shutdown(ctx context.Context) error {
-	slog.InfoContext(ctx, "Shutting down OpenTelemetry providers")
+	slog.Info("Shutting down OpenTelemetry providers")
 
 	var errs []error
 	if err := p.tracerProvider.Shutdown(ctx); err != nil {
-		slog.ErrorContext(ctx, "Failed to shutdown tracer provider",
+		slog.Error("Failed to shutdown tracer provider",
 			slog.Any("error", err),
 		)
 		errs = append(errs, err)
 	}
 
 	if err := p.meterProvider.Shutdown(ctx); err != nil {
-		slog.ErrorContext(ctx, "Failed to shutdown meter provider",
+		slog.Error("Failed to shutdown meter provider",
 			slog.Any("error", err),
 		)
 		errs = append(errs, err)
 	}
 
 	if len(errs) == 0 {
-		slog.InfoContext(ctx, "OpenTelemetry shut down successfully")
+		slog.Info("OpenTelemetry shut down successfully")
 	}
 	return errors.Join(errs...)
 }

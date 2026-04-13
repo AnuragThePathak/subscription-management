@@ -86,7 +86,7 @@ func (s *SubscriptionScheduler) Start(ctx context.Context) error {
 
 	// Run once immediately.
 	if err := s.pollSubscriptions(ctx); err != nil {
-		slog.WarnContext(ctx, "Initial subscription poll failed (will retry on next tick)",
+		slog.Warn("Initial subscription poll failed (will retry on next tick)",
 			slog.Any("error", err),
 		)
 	}
@@ -97,7 +97,7 @@ func (s *SubscriptionScheduler) Start(ctx context.Context) error {
 			return ctx.Err()
 		case <-ticker.C:
 			if err := s.pollSubscriptions(ctx); err != nil {
-				slog.ErrorContext(ctx, "Subscription poll failed",
+				slog.Error("Subscription poll failed",
 					slog.Any("error", err),
 				)
 			}

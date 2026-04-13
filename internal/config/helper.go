@@ -53,14 +53,14 @@ func composeMonitors(m1, m2 *event.CommandMonitor) *event.CommandMonitor {
 }
 
 // DatabaseConnection establishes a connection to the MongoDB database.
-func DatabaseConnection(ctx context.Context, dbConfig DatabaseConfig, otelEnabled bool) (*adapters.Database, error) {
+func DatabaseConnection(dbConfig DatabaseConfig, otelEnabled bool) (*adapters.Database, error) {
 	dbClientOpts := options.Client().ApplyURI(dbConfig.URL)
 
 	if otelEnabled {
 		dbClientOpts.SetMonitor(
 			composeMonitors(
 				otelmongo.NewMonitor(),
-				observability.NewMongoMetricsMonitor(ctx),
+				observability.NewMongoMetricsMonitor(),
 			),
 		)
 	}
@@ -68,14 +68,14 @@ func DatabaseConnection(ctx context.Context, dbConfig DatabaseConfig, otelEnable
 	db := adapters.Database{}
 	var err error
 	if db.Client, err = mongo.Connect(dbClientOpts); err != nil {
-		slog.ErrorContext(ctx, "Failed to initialize MongoDB client",
+		slog.Error("Failed to initialize MongoDB client",
 			slog.String("host", redactURL(dbConfig.URL)),
 			slog.Any("error", err),
 		)
 		return nil, err
 	}
 	db.DB = db.Client.Database(dbConfig.Name)
-	slog.InfoContext(ctx, "Initialized MongoDB client",
+	slog.Info("Initialized MongoDB client",
 		slog.String("host", redactURL(dbConfig.URL)),
 		slog.String("database", dbConfig.Name),
 	)
@@ -83,7 +83,7 @@ func DatabaseConnection(ctx context.Context, dbConfig DatabaseConfig, otelEnable
 }
 
 // RedisConnection establishes a connection to the Redis database.
-func RedisConnection(ctx context.Context, redisConfig RedisConfig, otelEnabled bool) *adapters.Redis {
+func RedisConnection(redisConfig RedisConfig, otelEnabled bool) *adapters.Redis {
 	rdb := adapters.Redis{}
 	rdb.Client = redis.NewClient(&redis.Options{
 		Addr:     redisConfig.URL,
@@ -93,7 +93,7 @@ func RedisConnection(ctx context.Context, redisConfig RedisConfig, otelEnabled b
 
 	if otelEnabled {
 		if err := redisotel.InstrumentTracing(rdb.Client); err != nil {
-			slog.ErrorContext(ctx, "Failed to instrument Redis with tracing", slog.Any("error", err))
+			slog.Error("Failed to instrument Redis with tracing", slog.Any("error", err))
 		}
 	}
 
@@ -108,8 +108,7 @@ func RedisConnection(ctx context.Context, redisConfig RedisConfig, otelEnabled b
 //
 // When OTel is enabled, logs are written as JSON to both stderr and
 // ./logs/app.log (for Promtail to tail and ship to Loki).
-// ./logs/app.log (for Promtail to tail and ship to Loki).
-func SetupLogger(ctx context.Context, env string, otelEnabled bool) error {
+func SetupLogger(env string, otelEnabled bool) error {
 	programLevel := new(slog.LevelVar)
 	if env == "production" {
 		programLevel.Set(slog.LevelInfo)
@@ -151,19 +150,19 @@ func SetupLogger(ctx context.Context, env string, otelEnabled bool) error {
 	handler = observability.NewTraceHandler(handler)
 
 	slog.SetDefault(slog.New(handler))
-	slog.InfoContext(ctx, "Logger initialized", slog.String("environment", env))
+	slog.Info("Logger initialized", slog.String("environment", env))
 	return nil
 }
 
 // NewRateLimit creates a rate limiter configuration.
-func NewRateLimit(ctx context.Context, rateConfig *RateLimiterConfig) *redis_rate.Limit {
+func NewRateLimit(rateConfig *RateLimiterConfig) *redis_rate.Limit {
 	if rateConfig.Burst == 0 {
 		rateConfig.Burst = rateConfig.Rate
 	}
 	if rateConfig.Period == 0 {
 		rateConfig.Period = time.Minute
 	}
-	slog.InfoContext(ctx, "Rate limiter configured", slog.Int("rate", rateConfig.Rate), slog.Int("burst", rateConfig.Burst), slog.Duration("period", rateConfig.Period))
+	slog.Info("Rate limiter configured", slog.Int("rate", rateConfig.Rate), slog.Int("burst", rateConfig.Burst), slog.Duration("period", rateConfig.Period))
 
 	return &redis_rate.Limit{
 		Rate:   rateConfig.Rate,
@@ -173,8 +172,8 @@ func NewRateLimit(ctx context.Context, rateConfig *RateLimiterConfig) *redis_rat
 }
 
 // QueueRedisConfig returns Redis configuration for the task queue.
-func QueueRedisConfig(ctx context.Context, redisConfig RedisConfig) *asynq.RedisClientOpt {
-	slog.DebugContext(ctx, "Queue Redis configuration initialized",
+func QueueRedisConfig(redisConfig RedisConfig) *asynq.RedisClientOpt {
+	slog.Debug("Queue Redis configuration initialized",
 		slog.String("addr", redactURL(redisConfig.URL)),
 		slog.Int("db", redisConfig.DB),
 	)

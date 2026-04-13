@@ -36,19 +36,19 @@ func main() {
 
 	var cf *config.Config
 	{
-		if cf, err = config.LoadConfig(ctx); err != nil {
-			slog.ErrorContext(ctx, "Failed to load config", slog.Any("error", err))
+		if cf, err = config.LoadConfig(); err != nil {
+			slog.Error("Failed to load config", slog.Any("error", err))
 			os.Exit(1)
 		}
 	}
 
 	// Configure the default slog logger.
-	if err = config.SetupLogger(ctx, cf.Env, cf.OTel.Enabled); err != nil {
-		slog.ErrorContext(ctx, "Failed to configure logger", slog.Any("error", err))
+	if err = config.SetupLogger(cf.Env, cf.OTel.Enabled); err != nil {
+		slog.Error("Failed to configure logger", slog.Any("error", err))
 		os.Exit(1)
 	}
 
-	slog.InfoContext(ctx, "Starting Subscription Management Service",
+	slog.Info("Starting Subscription Management Service",
 		slog.String("environment", cf.Env),
 		slog.Int("port", cf.Server.Port),
 	)
@@ -58,31 +58,31 @@ func main() {
 	if cf.OTel.Enabled {
 		cf.OTel.Environment = cf.Env
 		if otelProvider, err = observability.InitOTel(ctx, cf.OTel); err != nil {
-			slog.ErrorContext(ctx, "Failed to initialize OpenTelemetry", slog.Any("error", err))
+			slog.Error("Failed to initialize OpenTelemetry", slog.Any("error", err))
 			os.Exit(1)
 		}
 	} else {
-		slog.InfoContext(ctx, "OpenTelemetry disabled")
+		slog.Info("OpenTelemetry disabled")
 	}
 
 	// Initialize the database client
 	var database *adapters.Database
 	{
-		if database, err = config.DatabaseConnection(ctx, cf.Database, cf.OTel.Enabled); err != nil {
-			slog.ErrorContext(ctx, "Failed to initialize database client", slog.Any("error", err))
+		if database, err = config.DatabaseConnection(cf.Database, cf.OTel.Enabled); err != nil {
+			slog.Error("Failed to initialize database client", slog.Any("error", err))
 			os.Exit(1)
 		}
 		if err = database.Ping(ctx); err != nil {
-			slog.ErrorContext(ctx, "Failed to connect to database", slog.Any("error", err))
+			slog.Error("Failed to connect to database", slog.Any("error", err))
 			os.Exit(1)
 		}
 	}
 
 	var redis *adapters.Redis
 	{
-		redis = config.RedisConnection(ctx, cf.Redis, cf.OTel.Enabled)
+		redis = config.RedisConnection(cf.Redis, cf.OTel.Enabled)
 		if err = redis.Ping(ctx); err != nil {
-			slog.ErrorContext(ctx, "Failed to connect to Redis", slog.Any("error", err))
+			slog.Error("Failed to connect to Redis", slog.Any("error", err))
 			os.Exit(1)
 		}
 	}
@@ -94,31 +94,35 @@ func main() {
 	var billRepository repositories.BillRepository
 	{
 		if userRepository, err = repositories.NewUserRepository(ctx, database.DB); err != nil {
-			slog.ErrorContext(ctx, "Failed to create user repository", slog.Any("error", err))
+			slog.Error("Failed to create user repository", slog.Any("error", err))
 			os.Exit(1)
 		}
 		if subscriptionRepository, err = repositories.NewSubscriptionRepository(ctx, database.DB); err != nil {
-			slog.ErrorContext(ctx, "Failed to create subscription repository", slog.Any("error", err))
+			slog.Error("Failed to create subscription repository", slog.Any("error", err))
 			os.Exit(1)
 		}
 		if billRepository, err = repositories.NewBillRepository(ctx, database.DB); err != nil {
-			slog.ErrorContext(ctx, "Failed to create bill repository", slog.Any("error", err))
+			slog.Error("Failed to create bill repository", slog.Any("error", err))
 			os.Exit(1)
 		}
 	}
 
-	appRateLimiterService := services.NewRateLimiterService(redisRateLimiter, config.NewRateLimit(ctx, &cf.RateLimiter.App), "app")
+	appRateLimiterService := services.NewRateLimiterService(
+		redisRateLimiter,
+		config.NewRateLimit(&cf.RateLimiter.App),
+		"app",
+	)
 	jwtService := services.NewJWTService(cf.JWT)
 
-	var metricsPort services.SubscriptionMetrics
+	var metricsPort *observability.OTelMetricsAdapter
 	if cf.OTel.Enabled {
 		metricsPort, err = observability.NewMetricsAdapter(cf.OTel)
 		if err != nil {
-			slog.ErrorContext(ctx, "Failed to initialize business metrics adapter", slog.Any("error", err))
+			slog.Error("Failed to initialize business metrics adapter", slog.Any("error", err))
 			os.Exit(1)
 		}
 	} else {
-		// Use a NoOp adapter so the domain layer requires no `if metrics != nil` checks.
+		// Noop instruments — domain layer calls are safe no-ops.
 		metricsPort = observability.NewNoOpMetricsAdapter()
 	}
 
@@ -133,26 +137,26 @@ func main() {
 			sch := scheduler.NewSubscriptionScheduler(
 				subscriptionService,
 				redis.Client,
-				config.QueueRedisConfig(ctx, cf.Redis),
+				config.QueueRedisConfig(cf.Redis),
 				cf.Scheduler.Interval,
 				cf.Scheduler.ReminderDays,
 				cf.Scheduler.Name,
 			)
 			go func() {
 				if startErr := sch.Start(ctx); startErr != nil && startErr != context.Canceled {
-					slog.ErrorContext(ctx, "Scheduler failed", slog.Any("error", startErr))
+					slog.Error("Scheduler failed", slog.Any("error", startErr))
 				}
 			}()
 
 			schedulerAdapter = &adapters.Scheduler{
 				Scheduler: sch,
 			}
-			slog.InfoContext(ctx, "Scheduler started",
+			slog.Info("Scheduler started",
 				slog.String("env", cf.Env),
 				slog.Duration("interval", cf.Scheduler.Interval),
 			)
 		} else {
-			slog.InfoContext(ctx, "Scheduler skipped", slog.String("env", cf.Env))
+			slog.Info("Scheduler skipped", slog.String("env", cf.Env))
 		}
 
 		if slices.Contains(cf.QueueWorker.EnabledForEnv, cf.Env) {
@@ -161,26 +165,26 @@ func main() {
 				userService,
 				notifications.NewEmailSender(cf.Email),
 				redis.Client,
-				config.QueueRedisConfig(ctx, cf.Redis),
+				config.QueueRedisConfig(cf.Redis),
 				cf.QueueWorker.Concurrency,
 				cf.QueueWorker.QueueName,
 				cf.QueueWorker.Name,
 			)
 			go func() {
-				if startErr := worker.Start(ctx); startErr != nil && startErr != context.Canceled {
-					slog.ErrorContext(ctx, "Queue worker failed", slog.Any("error", startErr))
+				if startErr := worker.Start(); startErr != nil && startErr != context.Canceled {
+					slog.Error("Queue worker failed", slog.Any("error", startErr))
 				}
 			}()
 
 			schedulerWorkerAdapter = &adapters.SchedulerWorker{
 				Worker: worker,
 			}
-			slog.InfoContext(ctx, "Queue worker started",
+			slog.Info("Queue worker started",
 				slog.String("env", cf.Env),
 				slog.Int("concurrency", cf.QueueWorker.Concurrency),
 			)
 		} else {
-			slog.InfoContext(ctx, "Queue worker skipped", slog.String("env", cf.Env))
+			slog.Info("Queue worker skipped", slog.String("env", cf.Env))
 		}
 	}
 
@@ -194,15 +198,15 @@ func main() {
 	{
 		// Setup router
 		r := chi.NewRouter()
-		
+
 		// Observability: Prometheus metrics endpoint — always exposed so
 		// infrastructure tooling (healthchecks, Prometheus) can scrape it
 		// regardless of whether OTel tracing is enabled.
 		r.Method(http.MethodGet, "/metrics", promhttp.Handler())
-		
+
 		// Health Checks
 		r.Mount("/", controllers.NewHealthController(database, redis))
-		
+
 		// Service Specific API Group
 		r.Group(func(r chi.Router) {
 			// Observability: OTel middleware first to capture the full request lifecycle.
@@ -255,7 +259,7 @@ func main() {
 		}
 	}
 
-	slog.InfoContext(ctx, "Service ready", slog.Duration("startup_time", time.Since(startupStart)))
+	slog.Info("Service ready", slog.Duration("startup_time", time.Since(startupStart)))
 
 	apiServer.StartWithGracefulShutdown(
 		ctx,

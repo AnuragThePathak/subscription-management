@@ -30,10 +30,9 @@ services:
     container_name: sub_mgt_promtail
     command: -config.file=/etc/promtail/config.yml
     volumes:
-      # ./logs is created at runtime by the app (os.MkdirAll). If it doesn't
-      # exist yet, create it manually once: mkdir -p logs
       - ./logs:/var/log/app
       - ./observability/promtail.yml:/etc/promtail/config.yml
+      - promtail_data:/var/lib/promtail
 
   grafana:
     image: grafana/grafana:latest
@@ -51,3 +50,6 @@ services:
       - prometheus
       - loki
       - jaeger
+
+volumes:
+  promtail_data:

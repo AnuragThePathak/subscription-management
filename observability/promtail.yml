@@ -3,7 +3,7 @@ server:
   grpc_listen_port: 0
 
 positions:
-  filename: /tmp/positions.yaml
+  filename: /var/lib/promtail/positions.yaml 
 
 clients:
   - url: http://loki:3100/loki/api/v1/push
@@ -15,13 +15,18 @@ scrape_configs:
         - localhost
       labels:
         job: subscription-management
-        __path__: /var/log/app/app.log
+        # The glob pattern (*) forces Promtail to poll the directory more aggressively
+        __path__: /var/log/app/*.log 
     pipeline_stages:
     - json:
         expressions:
           trace_id: trace_id
           level: level
+          log_time: time # Extract the actual slog timestamp
     - labels:
         level:
+    - timestamp:
+        source: log_time
+        format: RFC3339Nano # Tell Loki to use the Go timestamp, not the scrape timestamp
     - structured_metadata:
         trace_id:

@@ -162,7 +162,7 @@ func (s *subscriptionService) GetSubscriptionsByUserID(ctx context.Context, id s
 	return s.subscriptionRepository.GetByUserID(ctx, userID)
 }
 
-func (s *subscriptionService) DeleteSubscription(ctx context.Context, claimedUserID string, id string) error {
+func (s *subscriptionService) DeleteSubscription(ctx context.Context, id string, claimedUserID string) error {
 	subscriptionID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return apperror.NewBadRequestError("Invalid subscription ID")
@@ -198,7 +198,7 @@ func (s *subscriptionService) DeleteSubscription(ctx context.Context, claimedUse
 	return nil
 }
 
-func (s *subscriptionService) CancelSubscription(ctx context.Context, claimedUserID string, id string) (*models.Subscription, error) {
+func (s *subscriptionService) CancelSubscription(ctx context.Context, id string, claimedUserID string) (*models.Subscription, error) {
 	subscriptionID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return nil, apperror.NewBadRequestError("Invalid subscription ID")

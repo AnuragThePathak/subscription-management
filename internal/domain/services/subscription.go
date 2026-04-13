@@ -116,7 +116,6 @@ func (s *subscriptionService) CreateSubscription(ctx context.Context, subscripti
 
 	slog.InfoContext(ctx, "Subscription created",
 		slog.String("subscription_id", res.ID.Hex()),
-		slog.String("user_id", claimedUserID),
 		slog.String("name", subscription.Name),
 	)
 	return res, nil
@@ -193,7 +192,6 @@ func (s *subscriptionService) DeleteSubscription(ctx context.Context, id string,
 
 	slog.InfoContext(ctx, "Subscription deleted",
 		slog.String("subscription_id", id),
-		slog.String("user_id", claimedUserID),
 	)
 	return nil
 }
@@ -263,7 +261,6 @@ func (s *subscriptionService) CancelSubscription(ctx context.Context, id string,
 
 	slog.InfoContext(ctx, "Subscription canceled",
 		slog.String("subscription_id", id),
-		slog.String("user_id", claimedUserID),
 	)
 	return res, nil
 }

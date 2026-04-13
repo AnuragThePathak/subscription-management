@@ -166,7 +166,7 @@ func (us *userService) UpdateUser(ctx context.Context, id string, updateReq *mod
 		return nil, err
 	}
 
-	slog.DebugContext(ctx, "User updated", slog.String("user_id", existingUser.ID.Hex()))
+	slog.DebugContext(ctx, "User updated")
 	return result, nil
 }
 
@@ -193,7 +193,7 @@ func (us *userService) DeleteUser(ctx context.Context, id string, claimedUserID 
 		return err
 	}
 
-	slog.InfoContext(ctx, "User deleted", slog.String("user_id", id))
+	slog.InfoContext(ctx, "User deleted")
 	return nil
 }
 

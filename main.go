@@ -212,7 +212,7 @@ func main() {
 			// Observability: OTel middleware first to capture the full request lifecycle.
 			// Ensures trace_id is injected into r.Context() for subsequent middlewares (like Logger).
 			if cf.OTel.Enabled {
-				r.Use(middlewares.OTel(cf.OTel.ServiceName))
+				r.Use(middlewares.OTel())
 			}
 			r.Use(middleware.Recoverer)
 			r.Use(middleware.Logger)

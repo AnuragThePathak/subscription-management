@@ -1,40 +1,63 @@
 package middlewares
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/attribute"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
 // OTel returns a chi middleware that instruments HTTP requests with OpenTelemetry.
 // It creates a span per request, records metrics, sets status codes,
 // and propagates trace context.
-func OTel(serviceName string) func(http.Handler) http.Handler {
+func OTel() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
-		// Wrap the next handler to rename the span to the actual chi route
-		// after the routing has matched and the route pattern is available.
+		// Wrap the next handler to inject the http.route label into the
+		// OTel labeler after chi has resolved the route pattern.
 		fn := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			next.ServeHTTP(w, r)
 
-			// Extract the route pattern from chi context and rename the span.
-			if routeCtx := chi.RouteContext(r.Context()); routeCtx != nil {
-				if pattern := routeCtx.RoutePattern(); pattern != "" {
-					// Rename the span so Jaeger shows the route (e.g. "/api/v1/users/{id}")
-					// instead of a generic "HTTP GET" or the base service name.
-					trace.SpanFromContext(r.Context()).SetName(pattern)
+			if pattern := resolveRoutePattern(r.Context()); pattern != "" {
+				// Set http.route directly on the span so Jaeger displays
+				// the correct route. The labeler only affects metrics.
+				trace.SpanFromContext(r.Context()).SetAttributes(
+					semconv.HTTPRoute(pattern),
+				)
 
-					if labeler, ok := otelhttp.LabelerFromContext(r.Context()); ok {
-						labeler.Add(attribute.String("http.route", pattern))
-					}
+				if labeler, ok := otelhttp.LabelerFromContext(r.Context()); ok {
+					labeler.Add(attribute.String("http.route", pattern))
 				}
 			}
 		})
 
-		// otelhttp.NewHandler wraps the internal handler and handles standard HTTP telemetry:
-		// span creation, trace context propagation, and Prometheus metrics recording.
-		return otelhttp.NewHandler(fn, serviceName)
+		// otelhttp.NewHandler creates the span and records HTTP metrics.
+		//
+		// WithSpanNameFormatter overrides the default span naming. otelhttp
+		// calls the formatter twice: once at span creation (before routing)
+		// and once after the handler returns (when r.Pattern is set).
+		// On the second call chi's RoutePatterns are populated, so we
+		// return the fully resolved route (e.g. "/api/v1/auth/login").
+		return otelhttp.NewHandler(fn, "http.request",
+			otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string {
+				if pattern := resolveRoutePattern(r.Context()); pattern != "" {
+					return pattern
+				}
+				return operation
+			}),
+		)
 	}
+}
+
+// resolveRoutePattern resolves the route pattern for the given context.
+// It returns the route pattern if found, otherwise returns an empty string.
+func resolveRoutePattern(ctx context.Context) string {
+	routeCtx := chi.RouteContext(ctx)
+	if routeCtx == nil {
+		return ""
+	}
+	return routeCtx.RoutePattern()
 }

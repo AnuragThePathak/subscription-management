@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/anuragthepathak/subscription-management/internal/lib"
 	"github.com/hibiken/asynq"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -37,8 +39,23 @@ func AsynqTracingMiddleware(serviceName string) asynq.MiddlewareFunc {
 
 			// Start a span for the worker execution
 			spanName := fmt.Sprintf("Worker Process %s", task.Type())
-			ctx, span := tracer.Start(ctx, spanName, trace.WithSpanKind(trace.SpanKindConsumer))
+			ctx, span := tracer.Start(ctx, spanName, 
+				trace.WithSpanKind(trace.SpanKindConsumer),
+				trace.WithAttributes(
+					semconv.MessagingSystemKey.String("asynq"),
+					semconv.MessagingOperationName("process"),
+					semconv.MessagingDestinationNameKey.String(task.Type()),
+				),
+			)
 			defer span.End()
+
+			// Inject Task ID for trace span
+			if taskID, ok := asynq.GetTaskID(ctx); ok {
+				span.SetAttributes(TaskID(taskID))
+			}
+
+			// Inject Task type for logs
+			ctx = context.WithValue(ctx, lib.TaskTypeKey, task.Type())
 
 			// Execute actual task handler
 			err := next.ProcessTask(ctx, task)
@@ -51,5 +68,17 @@ func AsynqTracingMiddleware(serviceName string) asynq.MiddlewareFunc {
 
 			return err
 		})
+	}
+}
+
+// AsynqProducerAttributes returns the standard OTel attributes for publishing to an Asynq queue.
+func AsynqProducerAttributes(taskName string) []trace.SpanStartOption {
+	return []trace.SpanStartOption{
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(
+			semconv.MessagingSystemKey.String("asynq"),
+			semconv.MessagingOperationName("publish"),
+			semconv.MessagingDestinationNameKey.String(taskName),
+		),
 	}
 }

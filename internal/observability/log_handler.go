@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/anuragthepathak/subscription-management/internal/lib"
+	"github.com/hibiken/asynq"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -27,6 +28,8 @@ func (h *traceHandler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 func (h *traceHandler) Handle(ctx context.Context, record slog.Record) error {
+	record = record.Clone()
+
 	// Add user ID to the log record if available
 	if userID, ok := lib.GetUserID(ctx); ok {
 		record.AddAttrs(slog.String("user_id", userID))
@@ -35,6 +38,16 @@ func (h *traceHandler) Handle(ctx context.Context, record slog.Record) error {
 	// Add subscription ID to the log record if available
 	if subscriptionID, ok := lib.GetSubscriptionID(ctx); ok {
 		record.AddAttrs(slog.String("subscription_id", subscriptionID))
+	}
+	
+	// Add task type to the log record if available
+	if taskType, ok := lib.GetTaskType(ctx); ok {
+		record.AddAttrs(slog.String("task_type", taskType))
+	}
+
+	// Add task ID to the log record if available
+	if taskID, ok := asynq.GetTaskID(ctx); ok {
+		record.AddAttrs(slog.String("asynq_task_id", taskID))
 	}
 
 	// Add trace ID and span ID to the log record if available

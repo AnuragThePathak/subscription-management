@@ -98,8 +98,6 @@ func (es *EmailSender) SendReminderEmail(ctx context.Context, toEmail string, us
 	slog.InfoContext(ctx, "Reminder email sent",
 		slog.String("template", string(templateType)),
 		slog.String("subscription", subscription.Name),
-		slog.String("subscription_id", subscription.ID.Hex()),
-		slog.String("user_id", subscription.UserID.Hex()),
 	)
 
 	return nil
@@ -158,8 +156,6 @@ func (e *EmailSender) SendRenewalConfirmationEmail(
 	// Log the successful email sending.
 	slog.InfoContext(ctx, "Renewal confirmation email sent",
 		slog.String("subscription", subscription.Name),
-		slog.String("subscription_id", subscription.ID.Hex()),
-		slog.String("user_id", subscription.UserID.Hex()),
 	)
 	return nil
 }

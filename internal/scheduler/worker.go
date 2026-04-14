@@ -81,8 +81,10 @@ func (w *ReminderWorker) handleSubscriptionReminder(ctx context.Context, task *a
 		return fmt.Errorf("failed to unmarshal task payload: %v", err)
 	}
 
+	ctx = observability.EnrichContext(ctx, payload.UserID, payload.SubscriptionID)
+	observability.EnrichSpan(ctx)
+
 	slog.DebugContext(ctx, "Processing subscription reminder",
-		slog.String("subscription_id", payload.SubscriptionID),
 		slog.Int("days_before", payload.DaysBefore),
 	)
 
@@ -101,7 +103,6 @@ func (w *ReminderWorker) handleSubscriptionReminder(ctx context.Context, task *a
 	// Ensure the subscription is still active.
 	if subscription.Status != models.Active {
 		slog.DebugContext(ctx, "Skipping reminder for non-active subscription",
-			slog.String("subscription_id", payload.SubscriptionID),
 			slog.String("status", string(subscription.Status)),
 		)
 		return nil
@@ -118,9 +119,10 @@ func (w *ReminderWorker) handleSubscriptionRenewal(ctx context.Context, task *as
 		return fmt.Errorf("failed to unmarshal renewal task payload: %v", err)
 	}
 
-	slog.DebugContext(ctx, "Processing subscription renewal",
-		slog.String("subscription_id", payload.SubscriptionID),
-	)
+	ctx = observability.EnrichContext(ctx, payload.UserID, payload.SubscriptionID)
+	observability.EnrichSpan(ctx)
+
+	slog.DebugContext(ctx, "Processing subscription renewal")
 
 	// Parse the subscription ID
 	subscriptionID, err := bson.ObjectIDFromHex(payload.SubscriptionID)
@@ -137,7 +139,6 @@ func (w *ReminderWorker) handleSubscriptionRenewal(ctx context.Context, task *as
 	// Ensure the subscription is still active
 	if subscription.Status != models.Active {
 		slog.DebugContext(ctx, "Skipping renewal for non-active subscription",
-			slog.String("subscription_id", payload.SubscriptionID),
 			slog.String("status", string(subscription.Status)),
 		)
 		return nil
@@ -148,7 +149,6 @@ func (w *ReminderWorker) handleSubscriptionRenewal(ctx context.Context, task *as
 	renewalWindow := now.Add(time.Hour * RenewalHoursBeforeDay)
 	if subscription.ValidTill.After(renewalWindow) {
 		slog.DebugContext(ctx, "Skipping renewal: outside valid window",
-			slog.String("subscription_id", payload.SubscriptionID),
 			slog.String("valid_till", subscription.ValidTill.Format(time.RFC3339)),
 		)
 		return nil
@@ -161,8 +161,6 @@ func (w *ReminderWorker) handleSubscriptionRenewal(ctx context.Context, task *as
 	}
 
 	slog.InfoContext(ctx, "Subscription renewed",
-		slog.String("subscription_id", payload.SubscriptionID),
-		slog.String("user_id", subscription.UserID.Hex()),
 		slog.String("new_valid_till", renewedSubscription.ValidTill.Format(time.RFC3339)),
 	)
 
@@ -170,8 +168,6 @@ func (w *ReminderWorker) handleSubscriptionRenewal(ctx context.Context, task *as
 	user, err := w.userService.FetchUserByIDInternal(ctx, subscription.UserID)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to fetch user for renewal notification",
-			slog.String("subscription_id", payload.SubscriptionID),
-			slog.String("user_id", subscription.UserID.Hex()),
 			slog.Any("error", err),
 		)
 		// Continue without sending email
@@ -184,8 +180,6 @@ func (w *ReminderWorker) handleSubscriptionRenewal(ctx context.Context, task *as
 			renewedSubscription,
 		); err != nil {
 			slog.ErrorContext(ctx, "Failed to send renewal confirmation email",
-				slog.String("subscription_id", payload.SubscriptionID),
-				slog.String("user_id", user.ID.Hex()),
 				slog.Any("error", err),
 			)
 			// Continue execution even if email fails
@@ -201,9 +195,10 @@ func (w *ReminderWorker) handleSubscriptionExpiration(ctx context.Context, task 
 		return fmt.Errorf("failed to unmarshal expiration task payload: %v", err)
 	}
 
-	slog.DebugContext(ctx, "Processing subscription expiration",
-		slog.String("subscription_id", payload.SubscriptionID),
-	)
+	ctx = observability.EnrichContext(ctx, payload.UserID, payload.SubscriptionID)
+	observability.EnrichSpan(ctx)
+
+	slog.DebugContext(ctx, "Processing subscription expiration")
 
 	// Parse the subscription ID
 	subscriptionID, err := bson.ObjectIDFromHex(payload.SubscriptionID)
@@ -220,7 +215,6 @@ func (w *ReminderWorker) handleSubscriptionExpiration(ctx context.Context, task 
 	// Ensure the subscription is canceled and past validity period
 	if subscription.Status != models.Canceled {
 		slog.DebugContext(ctx, "Skipping expiration for non-canceled subscription",
-			slog.String("subscription_id", payload.SubscriptionID),
 			slog.String("status", string(subscription.Status)),
 		)
 		return nil
@@ -230,7 +224,6 @@ func (w *ReminderWorker) handleSubscriptionExpiration(ctx context.Context, task 
 	now := time.Now()
 	if subscription.ValidTill.After(now) {
 		slog.DebugContext(ctx, "Skipping expiration: subscription still valid",
-			slog.String("subscription_id", payload.SubscriptionID),
 			slog.String("valid_till", subscription.ValidTill.Format(time.RFC3339)),
 		)
 		return nil
@@ -241,10 +234,7 @@ func (w *ReminderWorker) handleSubscriptionExpiration(ctx context.Context, task 
 		return fmt.Errorf("failed to mark subscription as expired: %v", err)
 	}
 
-	slog.InfoContext(ctx, "Subscription expired",
-		slog.String("subscription_id", payload.SubscriptionID),
-		slog.String("user_id", subscription.UserID.Hex()),
-	)
+	slog.InfoContext(ctx, "Subscription expired")
 
 	return nil
 }
@@ -266,16 +256,12 @@ func (w *ReminderWorker) sendReminderNotification(ctx context.Context, subscript
 		daysBefore,
 	); err != nil {
 		slog.ErrorContext(ctx, "Failed to send reminder email",
-			slog.String("subscription_id", subscription.ID.Hex()),
-			slog.String("user_id", subscription.UserID.Hex()),
 			slog.Any("error", err),
 		)
 		return fmt.Errorf("failed to send reminder email: %v", err)
 	}
 
 	slog.InfoContext(ctx, "Reminder notification sent",
-		slog.String("subscription_id", subscription.ID.Hex()),
-		slog.String("user_id", subscription.UserID.Hex()),
 		slog.Int("days_before", daysBefore),
 	)
 
@@ -284,7 +270,6 @@ func (w *ReminderWorker) sendReminderNotification(ctx context.Context, subscript
 	err = w.redisClient.SetEx(ctx, key, "", 24*time.Hour).Err()
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to set reminder sent key in Redis",
-			slog.String("subscription_id", subscription.ID.Hex()),
 			slog.Any("error", err),
 		)
 	}

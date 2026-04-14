@@ -190,9 +190,7 @@ func (s *subscriptionService) DeleteSubscription(ctx context.Context, id string,
 		return err
 	}
 
-	slog.InfoContext(ctx, "Subscription deleted",
-		slog.String("subscription_id", id),
-	)
+	slog.InfoContext(ctx, "Subscription deleted")
 	return nil
 }
 
@@ -259,14 +257,12 @@ func (s *subscriptionService) CancelSubscription(ctx context.Context, id string,
 	s.metrics.IncSubscriptionsCanceled(ctx)
 	s.metrics.DecActiveSubscriptions(ctx)
 
-	slog.InfoContext(ctx, "Subscription canceled",
-		slog.String("subscription_id", id),
-	)
+	slog.InfoContext(ctx, "Subscription canceled")
 	return res, nil
 }
 
 func (s *subscriptionService) RenewSubscriptionInternal(ctx context.Context, id bson.ObjectID) (*models.Subscription, error) {
-	slog.DebugContext(ctx, "Renewing subscription", slog.String("subscription_id", id.Hex()))
+	slog.DebugContext(ctx, "Renewing subscription")
 
 	subscription, err := s.subscriptionRepository.GetByID(ctx, id)
 	if err != nil {
@@ -347,7 +343,7 @@ func (s *subscriptionService) FetchCanceledExpiredSubscriptionsInternal(ctx cont
 }
 
 func (s *subscriptionService) MarkCanceledSubscriptionAsExpiredInternal(ctx context.Context, id bson.ObjectID) error {
-	slog.DebugContext(ctx, "Marking canceled subscription as expired", slog.String("subscription_id", id.Hex()))
+	slog.DebugContext(ctx, "Marking canceled subscription as expired")
 	subscription, err := s.subscriptionRepository.GetByID(ctx, id)
 	if err != nil {
 		return err

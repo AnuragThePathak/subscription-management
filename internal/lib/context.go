@@ -10,6 +10,7 @@ const (
 	UserIDKey         contextKey = "userID"         // Context key for authenticated user ID.
 	UserEmailKey      contextKey = "userEmail"      // Context key for authenticated user email.
 	SubscriptionIDKey contextKey = "subscriptionID" // Context key for subscription ID.
+	TaskTypeKey       contextKey = "taskType"       // Context key for scheduler/worker task type.
 )
 
 // GetUserID retrieves the authenticated user ID from the context.
@@ -28,4 +29,10 @@ func GetUserEmail(ctx context.Context) (string, bool) {
 func GetSubscriptionID(ctx context.Context) (string, bool) {
 	id, ok := ctx.Value(SubscriptionIDKey).(string)
 	return id, ok
+}
+
+// GetTaskType retrieves the task type from the context.
+func GetTaskType(ctx context.Context) (string, bool) {
+	taskType, ok := ctx.Value(TaskTypeKey).(string)
+	return taskType, ok
 }

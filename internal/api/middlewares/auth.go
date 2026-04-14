@@ -45,7 +45,7 @@ func Authentication(jwtService services.JWTService) func(next http.Handler) http
 			// Add user ID to the span if available
 			span := trace.SpanFromContext(ctx)
 			if span.IsRecording() {
-				span.SetAttributes(semconv.UserID(claims.UserID))
+				span.SetAttributes(semconv.EnduserID(claims.UserID))
 			}
 
 			next.ServeHTTP(w, r.WithContext(ctx))

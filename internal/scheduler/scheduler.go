@@ -15,6 +15,8 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -108,7 +110,6 @@ func (s *SubscriptionScheduler) Start(ctx context.Context) error {
 func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
 	// Start a trace span for this entire scheduler tick execution
 	ctx, span := s.tracer.Start(ctx, "Scheduler Tick: Poll Subscriptions",
-		trace.WithSpanKind(trace.SpanKindProducer), // Marks this span as a job producer
 		trace.WithAttributes(
 			observability.SchedulerInterval(s.interval.String()),
 			observability.SchedulerReminderDays(s.reminderDays),
@@ -144,13 +145,27 @@ func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
 		errs = append(errs, err)
 	}
 
-	return errors.Join(errs...)
+	finalErr := errors.Join(errs...)
+	if finalErr != nil {
+		span.RecordError(finalErr)
+		span.SetStatus(codes.Error, finalErr.Error())
+	}
+	return finalErr
 }
 
 // handleReminderTasks checks for subscriptions needing reminders and schedules tasks.
 func (s *SubscriptionScheduler) handleReminderTasks(ctx context.Context) error {
+	ctx, span := s.tracer.Start(ctx, "Phase: Reminder Tasks",
+		trace.WithAttributes(
+			observability.TaskType(ReminderTask),
+		),
+	)
+	defer span.End()
+
 	activeSubscriptions, err := s.getSubscriptionsDueForReminder(ctx)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return err
 	}
 
@@ -161,6 +176,7 @@ func (s *SubscriptionScheduler) handleReminderTasks(ctx context.Context) error {
 		redisKey := fmt.Sprintf("reminder_sent:%s:%d", subscription.ID.Hex(), daysBefore)
 		exists, err := s.redisClient.Exists(ctx, redisKey).Result()
 		if err != nil {
+			span.RecordError(err)
 			slog.ErrorContext(ctx, "Failed to check Redis for sent reminder",
 				slog.String("subscription_id", subscription.ID.Hex()),
 				slog.Any("error", err),
@@ -170,6 +186,7 @@ func (s *SubscriptionScheduler) handleReminderTasks(ctx context.Context) error {
 
 		if exists == 0 { // Key does not exist, reminder not sent recently.
 			if err := s.scheduleReminderTask(ctx, subscription, daysBefore); err != nil {
+				span.RecordError(err)
 				slog.ErrorContext(ctx, "Failed to schedule reminder task",
 					slog.String("subscription_id", subscription.ID.Hex()),
 					slog.Any("error", err),
@@ -180,6 +197,7 @@ func (s *SubscriptionScheduler) handleReminderTasks(ctx context.Context) error {
 		}
 	}
 
+	span.SetAttributes(observability.TasksScheduled(scheduled))
 	if scheduled > 0 {
 		slog.InfoContext(ctx, "Reminder tasks scheduled",
 			slog.Int("count", scheduled),
@@ -191,14 +209,24 @@ func (s *SubscriptionScheduler) handleReminderTasks(ctx context.Context) error {
 
 // handleRenewalTasks checks for subscriptions needing automatic renewal and schedules tasks.
 func (s *SubscriptionScheduler) handleRenewalTasks(ctx context.Context) error {
+	ctx, span := s.tracer.Start(ctx, "Phase: Renewal Tasks",
+		trace.WithAttributes(
+			observability.TaskType(RenewalTask),
+		),
+	)
+	defer span.End()
+
 	renewalSubscriptions, err := s.getSubscriptionsDueForRenewal(ctx)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return err
 	}
 
 	scheduled := 0
 	for _, subscription := range renewalSubscriptions {
 		if err := s.scheduleRenewalTask(ctx, subscription); err != nil {
+			span.RecordError(err)
 			slog.ErrorContext(ctx, "Failed to schedule renewal task",
 				slog.String("subscription_id", subscription.ID.Hex()),
 				slog.Any("error", err),
@@ -208,6 +236,7 @@ func (s *SubscriptionScheduler) handleRenewalTasks(ctx context.Context) error {
 		}
 	}
 
+	span.SetAttributes(observability.TasksScheduled(scheduled))
 	if scheduled > 0 {
 		slog.InfoContext(ctx, "Renewal tasks scheduled",
 			slog.Int("count", scheduled),
@@ -219,14 +248,24 @@ func (s *SubscriptionScheduler) handleRenewalTasks(ctx context.Context) error {
 
 // handleExpirationTasks checks for subscriptions that are expired and schedules tasks.
 func (s *SubscriptionScheduler) handleExpirationTasks(ctx context.Context) error {
+	ctx, span := s.tracer.Start(ctx, "Phase: Expiration Tasks",
+		trace.WithAttributes(
+			observability.TaskType(ExpirationTask),
+		),
+	)
+	defer span.End()
+
 	expiringSubscriptions, err := s.getSubscriptionsDueForExpiration(ctx)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return err
 	}
 
 	scheduled := 0
 	for _, subscription := range expiringSubscriptions {
 		if err := s.scheduleExpirationTask(ctx, subscription); err != nil {
+			span.RecordError(err)
 			slog.ErrorContext(ctx, "Failed to schedule expiration task",
 				slog.String("subscription_id", subscription.ID.Hex()),
 				slog.Any("error", err),
@@ -236,6 +275,7 @@ func (s *SubscriptionScheduler) handleExpirationTasks(ctx context.Context) error
 		}
 	}
 
+	span.SetAttributes(observability.TasksScheduled(scheduled))
 	if scheduled > 0 {
 		slog.InfoContext(ctx, "Expiration tasks scheduled",
 			slog.Int("count", scheduled),
@@ -268,6 +308,17 @@ func (s *SubscriptionScheduler) getSubscriptionsDueForExpiration(ctx context.Con
 
 // scheduleReminderTask creates and enqueues a reminder task.
 func (s *SubscriptionScheduler) scheduleReminderTask(ctx context.Context, subscription *models.Subscription, daysBefore int) error {
+	// Create a dedicated child span for the network boundary
+	ctx, span := s.tracer.Start(ctx, "Enqueue Reminder Task",
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(
+			semconv.EnduserID(subscription.UserID.Hex()),
+			observability.SubscriptionID(subscription.ID.Hex()),
+			observability.TaskType(ReminderTask),
+		),
+	)
+	defer span.End()
+
 	payload := ReminderPayload{
 		SubscriptionID: subscription.ID.Hex(),
 		DaysBefore:     daysBefore,
@@ -276,6 +327,8 @@ func (s *SubscriptionScheduler) scheduleReminderTask(ctx context.Context, subscr
 
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
@@ -290,6 +343,8 @@ func (s *SubscriptionScheduler) scheduleReminderTask(ctx context.Context, subscr
 		asynq.MaxRetry(3),             // Retry up to 3 times if failed.
 	)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("failed to enqueue task: %w", err)
 	}
 
@@ -304,6 +359,17 @@ func (s *SubscriptionScheduler) scheduleReminderTask(ctx context.Context, subscr
 
 // scheduleRenewalTask creates and enqueues a renewal task.
 func (s *SubscriptionScheduler) scheduleRenewalTask(ctx context.Context, subscription *models.Subscription) error {
+	// Create a dedicated child span for the network boundary
+	ctx, span := s.tracer.Start(ctx, "Enqueue Renewal Task",
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(
+			semconv.EnduserID(subscription.UserID.Hex()),
+			observability.SubscriptionID(subscription.ID.Hex()),
+			observability.TaskType(RenewalTask),
+		),
+	)
+	defer span.End()
+
 	payload := RenewalPayload{
 		SubscriptionID: subscription.ID.Hex(),
 		RenewalDate:    subscription.ValidTill.Format(time.RFC3339),
@@ -311,6 +377,8 @@ func (s *SubscriptionScheduler) scheduleRenewalTask(ctx context.Context, subscri
 
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
@@ -319,11 +387,11 @@ func (s *SubscriptionScheduler) scheduleRenewalTask(ctx context.Context, subscri
 
 	// Calculate when the task should be processed - 4 hours before the renewal date
 	processAt := subscription.ValidTill.Add(-time.Hour * RenewalHoursBeforeDay)
-
 	// If the process time is in the past (very close to renewal), process immediately
 	if processAt.Before(time.Now()) {
 		processAt = time.Now()
 	}
+	span.SetAttributes(observability.ProcessAt(processAt))
 
 	info, err := s.client.Enqueue(
 		task,
@@ -334,6 +402,8 @@ func (s *SubscriptionScheduler) scheduleRenewalTask(ctx context.Context, subscri
 		asynq.ProcessAt(processAt),
 	)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("failed to enqueue task: %w", err)
 	}
 
@@ -348,6 +418,17 @@ func (s *SubscriptionScheduler) scheduleRenewalTask(ctx context.Context, subscri
 
 // New method to schedule expiration task
 func (s *SubscriptionScheduler) scheduleExpirationTask(ctx context.Context, subscription *models.Subscription) error {
+	// Create a dedicated child span for the network boundary
+	ctx, span := s.tracer.Start(ctx, "Enqueue Expiration Task",
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(
+			semconv.EnduserID(subscription.UserID.Hex()),
+			observability.SubscriptionID(subscription.ID.Hex()),
+			observability.TaskType(ExpirationTask),
+		),
+	)
+	defer span.End()
+
 	payload := ExpirationPayload{
 		SubscriptionID: subscription.ID.Hex(),
 		ValidTill:      subscription.ValidTill.Format(time.RFC3339),
@@ -355,6 +436,8 @@ func (s *SubscriptionScheduler) scheduleExpirationTask(ctx context.Context, subs
 
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
@@ -370,6 +453,8 @@ func (s *SubscriptionScheduler) scheduleExpirationTask(ctx context.Context, subs
 		asynq.MaxRetry(3),             // Retry up to 3 times if failed
 	)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("failed to enqueue task: %w", err)
 	}
 

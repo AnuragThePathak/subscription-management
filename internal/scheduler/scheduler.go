@@ -186,6 +186,7 @@ func (s *SubscriptionScheduler) handleReminderTasks(ctx context.Context) error {
 		if err != nil {
 			span.RecordError(err)
 			slog.ErrorContext(sCtx, "Failed to check Redis for sent reminder",
+				slog.Int("days_before", daysBefore),
 				slog.Any("error", err),
 			)
 			continue
@@ -195,6 +196,7 @@ func (s *SubscriptionScheduler) handleReminderTasks(ctx context.Context) error {
 			if err := s.scheduleReminderTask(sCtx, subscription, daysBefore); err != nil {
 				span.RecordError(err)
 				slog.ErrorContext(sCtx, "Failed to schedule reminder task",
+					slog.Int("days_before", daysBefore),
 					slog.Any("error", err),
 				)
 			} else {
@@ -329,7 +331,9 @@ func (s *SubscriptionScheduler) scheduleReminderTask(ctx context.Context, subscr
 	)
 	defer span.End()
 	observability.EnrichSpan(ctx)
-
+	span.SetAttributes(
+		observability.SchedulerDaysBefore(daysBefore),
+	)
 
 	payload := ReminderPayload{
 		SubscriptionID: subscription.ID.Hex(),

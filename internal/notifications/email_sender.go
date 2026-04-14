@@ -6,6 +6,9 @@ import (
 	"log/slog"
 
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
+	"github.com/anuragthepathak/subscription-management/internal/observability"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 	"gopkg.in/gomail.v2"
 )
 
@@ -19,12 +22,14 @@ type EmailConfig struct {
 	SMTPPassword string `mapstructure:"smtp_password"`
 	AccountURL   string `mapstructure:"account_url"`
 	SupportURL   string `mapstructure:"support_url"`
+	Name         string `mapstructure:"name"`
 }
 
 // EmailSender handles email sending operations.
 type EmailSender struct {
 	config EmailConfig
 	dialer *gomail.Dialer
+	tracer trace.Tracer
 }
 
 // NewEmailSender creates a new email service.
@@ -39,6 +44,7 @@ func NewEmailSender(config EmailConfig) *EmailSender {
 	return &EmailSender{
 		config,
 		dialer,
+		otel.Tracer(config.Name),
 	}
 }
 
@@ -49,8 +55,18 @@ func (es *EmailSender) SendReminderEmail(ctx context.Context, toEmail string, us
 		return err
 	}
 
+	// Start the child span for the SMTP call
+	ctx, span := es.tracer.Start(ctx, "Send Reminder Email",
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			observability.EmailDaysBefore(daysBefore),
+		),
+	)
+	defer span.End()
+	observability.EnrichSpan(ctx)
+
 	// Find appropriate template.
-	templateType:= FindTemplateByDays(daysBefore)
+	templateType := FindTemplateByDays(daysBefore)
 
 	// Get the template.
 	templates := GetTemplates()
@@ -104,7 +120,7 @@ func (es *EmailSender) SendReminderEmail(ctx context.Context, toEmail string, us
 }
 
 // SendRenewalConfirmationEmail sends an email notifying a user that their subscription has been automatically renewed
-func (e *EmailSender) SendRenewalConfirmationEmail(
+func (es *EmailSender) SendRenewalConfirmationEmail(
 	ctx context.Context,
 	userEmail string,
 	userName string,
@@ -114,6 +130,13 @@ func (e *EmailSender) SendRenewalConfirmationEmail(
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+
+	// Start the child span for the SMTP call
+	ctx, span := es.tracer.Start(ctx, "Send Renewal Confirmation Email",
+		trace.WithSpanKind(trace.SpanKindClient),
+	)
+	defer span.End()
+	observability.EnrichSpan(ctx)
 
 	subject := fmt.Sprintf("Your %s subscription has been renewed", subscription.Name)
 	renewalAmount := fmt.Sprintf("%d %s", subscription.Price, subscription.Currency)
@@ -144,13 +167,13 @@ func (e *EmailSender) SendRenewalConfirmationEmail(
 
 	// Create the email message.
 	message := gomail.NewMessage()
-	message.SetHeader("From", fmt.Sprintf("%s <%s>", e.config.FromName, e.config.FromEmail))
+	message.SetHeader("From", fmt.Sprintf("%s <%s>", es.config.FromName, es.config.FromEmail))
 	message.SetHeader("To", userEmail)
 	message.SetHeader("Subject", subject)
 	message.SetBody("text/html", body)
 
 	// Send the email.
-	if err := e.dialer.DialAndSend(message); err != nil {
+	if err := es.dialer.DialAndSend(message); err != nil {
 		return fmt.Errorf("failed to send renewal confirmation email: %w", err)
 	}
 	// Log the successful email sending.

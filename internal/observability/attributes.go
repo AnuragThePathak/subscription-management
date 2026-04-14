@@ -14,6 +14,8 @@ const (
 	processAtKey = attribute.Key("scheduler.process_at")
 	tasksScheduledKey = attribute.Key("scheduler.tasks_scheduled")
 	taskIDKey = attribute.Key("asynq.task_id")
+	emailDaysBeforeKey = attribute.Key("email.days_before")
+	schedulerDaysBeforeKey = attribute.Key("scheduler.days_before")
 )
 
 func SubscriptionID(val string) attribute.KeyValue {
@@ -42,4 +44,12 @@ func TasksScheduled(val int) attribute.KeyValue {
 
 func TaskID(val string) attribute.KeyValue {
 	return taskIDKey.String(val)
+}
+
+func EmailDaysBefore(val int) attribute.KeyValue {
+	return emailDaysBeforeKey.Int(val)
+}
+
+func SchedulerDaysBefore(val int) attribute.KeyValue {
+	return schedulerDaysBeforeKey.Int(val)
 }

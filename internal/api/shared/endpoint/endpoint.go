@@ -27,10 +27,20 @@ func (h *RequestHandler) readRequestBody(w http.ResponseWriter, r *http.Request,
 		return true
 	}
 	if err := json.NewDecoder(r.Body).Decode(bodyObj); err != nil {
+		slog.WarnContext(r.Context(), "Failed to decode request body",
+			slog.String("method", r.Method),
+			slog.String("path", r.URL.Path),
+			slog.Any("error", err),
+		)
 		WriteAPIResponse(w, http.StatusBadRequest, map[string]string{"error": "Invalid JSON"})
 		return false
 	}
 	if err := h.validate.Struct(bodyObj); err != nil {
+		slog.WarnContext(r.Context(), "Request validation failed",
+			slog.String("method", r.Method),
+			slog.String("path", r.URL.Path),
+			slog.Any("error", err),
+		)
 		WriteAPIResponse(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return false
 	}

@@ -49,6 +49,7 @@ email:
   smtp_password: "password" # SMTP server password
   account_url: "url" # URL for account management
   support_url: "url" # URL for support
+  name: "email-sender"
 
 otel:
   enabled: false # Set to true to enable OpenTelemetry tracing and metrics

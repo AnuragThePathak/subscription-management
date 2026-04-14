@@ -14,6 +14,7 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // ReminderWorker handles processing of reminder tasks.
@@ -83,6 +84,12 @@ func (w *ReminderWorker) handleSubscriptionReminder(ctx context.Context, task *a
 
 	ctx = observability.EnrichContext(ctx, payload.UserID, payload.SubscriptionID)
 	observability.EnrichSpan(ctx)
+	if span := trace.SpanFromContext(ctx); span.IsRecording() {
+		span.SetAttributes(
+			observability.SchedulerDaysBefore(payload.DaysBefore),
+		)
+	}
+		
 
 	slog.DebugContext(ctx, "Processing subscription reminder",
 		slog.Int("days_before", payload.DaysBefore),

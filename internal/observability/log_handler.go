@@ -32,6 +32,11 @@ func (h *traceHandler) Handle(ctx context.Context, record slog.Record) error {
 		record.AddAttrs(slog.String("user_id", userID))
 	}
 
+	// Add subscription ID to the log record if available
+	if subscriptionID, ok := lib.GetSubscriptionID(ctx); ok {
+		record.AddAttrs(slog.String("subscription_id", subscriptionID))
+	}
+
 	// Add trace ID and span ID to the log record if available
 	spanCtx := trace.SpanContextFromContext(ctx)
 	if spanCtx.IsValid() {

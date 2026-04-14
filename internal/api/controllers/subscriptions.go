@@ -3,6 +3,7 @@ package controllers
 import (
 	"net/http"
 
+	"github.com/anuragthepathak/subscription-management/internal/api/middlewares"
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/endpoint"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/anuragthepathak/subscription-management/internal/domain/services"
@@ -25,9 +26,13 @@ func NewSubscriptionController(subscriptionService services.SubscriptionServiceE
 	r.Post("/", c.createSubscription)
 	r.Get("/", c.getAllSubscriptions)
 	r.Get("/user/{id}", c.getSubscriptionsByUserID)
-	r.Get("/{id}", c.getSubscriptionByID)
-	r.Put("/{id}/cancel", c.cancelSubscription)
-	r.Delete("/{id}", c.deleteSubscription)
+
+	r.Route("/{subscriptionID}", func(r chi.Router) {
+		r.Use(middlewares.WithSubscriptionID)
+		r.Get("/", c.getSubscriptionByID)
+		r.Put("/cancel", c.cancelSubscription)
+		r.Delete("/", c.deleteSubscription)
+	})
 
 	return r
 }
@@ -59,7 +64,7 @@ func (c *subscriptionController) getAllSubscriptions(w http.ResponseWriter, r *h
 }
 
 func (c *subscriptionController) getSubscriptionByID(w http.ResponseWriter, r *http.Request) {
-	subscriptionID := chi.URLParam(r, "id")
+	subscriptionID, _ := lib.GetSubscriptionID(r.Context())
 	userID, _ := lib.GetUserID(r.Context())
 
 	c.requestHandler.ServeRequest(endpoint.InternalRequest{
@@ -73,7 +78,7 @@ func (c *subscriptionController) getSubscriptionByID(w http.ResponseWriter, r *h
 }
 
 func (c *subscriptionController) deleteSubscription(w http.ResponseWriter, r *http.Request) {
-	subscriptionID := chi.URLParam(r, "id")
+	subscriptionID, _ := lib.GetSubscriptionID(r.Context())
 	userID, _ := lib.GetUserID(r.Context())
 
 	c.requestHandler.ServeRequest(endpoint.InternalRequest{
@@ -101,7 +106,7 @@ func (c *subscriptionController) getSubscriptionsByUserID(w http.ResponseWriter,
 }
 
 func (c *subscriptionController) cancelSubscription(w http.ResponseWriter, r *http.Request) {
-	subscriptionID := chi.URLParam(r, "id")
+	subscriptionID, _ := lib.GetSubscriptionID(r.Context())
 	userID, _ := lib.GetUserID(r.Context())
 
 	c.requestHandler.ServeRequest(endpoint.InternalRequest{

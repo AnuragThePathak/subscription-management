@@ -15,7 +15,6 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -111,8 +110,8 @@ func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
 	ctx, span := s.tracer.Start(ctx, "Scheduler Tick: Poll Subscriptions",
 		trace.WithSpanKind(trace.SpanKindProducer), // Marks this span as a job producer
 		trace.WithAttributes(
-			attribute.String("scheduler.interval", s.interval.String()),
-			attribute.IntSlice("scheduler.reminder_days", s.reminderDays),
+			observability.SchedulerInterval(s.interval.String()),
+			observability.SchedulerReminderDays(s.reminderDays),
 		),
 	)
 	defer span.End()

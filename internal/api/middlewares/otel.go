@@ -6,7 +6,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"go.opentelemetry.io/otel/attribute"
 	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -24,12 +23,12 @@ func OTel() func(http.Handler) http.Handler {
 			if pattern := resolveRoutePattern(r.Context()); pattern != "" {
 				// Set http.route directly on the span so Jaeger displays
 				// the correct route. The labeler only affects metrics.
-				trace.SpanFromContext(r.Context()).SetAttributes(
-					semconv.HTTPRoute(pattern),
-				)
+				if span := trace.SpanFromContext(r.Context()); span.IsRecording() {
+					span.SetAttributes(semconv.HTTPRoute(pattern))
+				}
 
 				if labeler, ok := otelhttp.LabelerFromContext(r.Context()); ok {
-					labeler.Add(attribute.String("http.route", pattern))
+					labeler.Add(semconv.HTTPRoute(pattern))
 				}
 			}
 		})

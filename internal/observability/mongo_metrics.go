@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 )
 
 type MongoMetricsMonitor struct {
@@ -20,11 +21,12 @@ type MongoMetricsMonitor struct {
 func NewMongoMetricsMonitor() *event.CommandMonitor {
 	meter := otel.Meter("mongo-driver")
 	hist, err := meter.Float64Histogram(
-		"db_query_duration_seconds",
+		"db.client.operation.duration",
 		metric.WithDescription("MongoDB query duration in seconds"),
+		metric.WithUnit("s"),
 	)
 	if err != nil {
-		slog.Error("failed to create db_query_duration_seconds histogram", slog.Any("error", err))
+		slog.Error("failed to create db.client.operation.duration histogram", slog.Any("error", err))
 		return &event.CommandMonitor{}
 	}
 
@@ -47,7 +49,8 @@ func (m *MongoMetricsMonitor) Succeeded(ctx context.Context, evt *event.CommandS
 	if start, ok := m.starts.LoadAndDelete(evt.RequestID); ok {
 		duration := time.Since(start.(time.Time)).Seconds()
 		m.histogram.Record(ctx, duration, metric.WithAttributes(
-			attribute.String("command", evt.CommandName),
+			semconv.DBSystemNameMongoDB,
+			semconv.DBOperationNameKey.String(evt.CommandName),
 			attribute.String("status", "success"),
 		))
 	}
@@ -57,7 +60,8 @@ func (m *MongoMetricsMonitor) Failed(ctx context.Context, evt *event.CommandFail
 	if start, ok := m.starts.LoadAndDelete(evt.RequestID); ok {
 		duration := time.Since(start.(time.Time)).Seconds()
 		m.histogram.Record(ctx, duration, metric.WithAttributes(
-			attribute.String("command", evt.CommandName),
+			semconv.DBSystemNameMongoDB,
+			semconv.DBOperationNameKey.String(evt.CommandName),
 			attribute.String("status", "failed"),
 		))
 	}

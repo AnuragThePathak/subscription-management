@@ -5,8 +5,8 @@ import (
 	"net/http"
 
 	"github.com/anuragthepathak/subscription-management/internal/lib"
+	"github.com/anuragthepathak/subscription-management/internal/observability"
 	"github.com/go-chi/chi/v5"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -27,7 +27,7 @@ func WithSubscriptionID(next http.Handler) http.Handler {
 		// Update OpenTelemetry span
 		span := trace.SpanFromContext(ctx)
 		if span.IsRecording() {
-			span.SetAttributes(attribute.String("subscription.id", subscriptionID))
+			span.SetAttributes(observability.SubscriptionID(subscriptionID))
 		}
 
 		next.ServeHTTP(w, r.WithContext(ctx))

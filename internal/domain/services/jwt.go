@@ -114,13 +114,14 @@ func (s *jwtService) ValidateToken(tokenString string, tokenType models.TokenTyp
 	}
 
 	// Extract and validate the claims.
-	if claims, ok := token.Claims.(*models.Claims); ok && token.Valid {
-		// Verify token type.
-		if claims.Type != tokenType {
-			return nil, fmt.Errorf("invalid token type")
-		}
-		return claims, nil
+	claims, ok := token.Claims.(*models.Claims)
+	if !ok || !token.Valid {
+		return nil, fmt.Errorf("invalid token")
 	}
 
-	return nil, fmt.Errorf("invalid token")
+	// Verify token type.
+	if claims.Type != tokenType {
+		return nil, fmt.Errorf("invalid token type")
+	}
+	return claims, nil
 }

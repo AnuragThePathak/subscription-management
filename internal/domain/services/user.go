@@ -49,11 +49,15 @@ func (us *userService) CreateUser(ctx context.Context, user *models.User) (*mode
 	// Check if the user already exists
 	existingUser, err := us.userRepository.FindByEmail(ctx, user.Email)
 	if existingUser != nil {
-		return nil, apperror.NewConflictError("Email already in use")
+		return nil, apperror.NewConflictError("Email already in use").
+			WithMetadata(apperror.KeyAttemptedID, user.Email)
 	}
 	if err != nil {
-		var appErr apperror.AppError
-		if !errors.As(err, &appErr) || appErr.Code() != apperror.ErrNotFound {
+		if appErr, ok := errors.AsType[apperror.AppError](err); ok {
+			if appErr.Code() != apperror.ErrNotFound {
+				return nil, appErr.WithMetadata(apperror.KeyAttemptedID, user.Email)
+			}
+		} else {
 			return nil, err
 		}
 	}
@@ -61,7 +65,8 @@ func (us *userService) CreateUser(ctx context.Context, user *models.User) (*mode
 	// Hash password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), 10)
 	if err != nil {
-		return nil, apperror.NewInternalError(err)
+		return nil, apperror.NewInternalError(err).
+			WithMetadata(apperror.KeyAttemptedID, user.Email)
 	}
 	user.Password = string(hashedPassword)
 
@@ -76,7 +81,11 @@ func (us *userService) CreateUser(ctx context.Context, user *models.User) (*mode
 	// Insert into database
 	result, err := us.userRepository.Create(ctx, user)
 	if err != nil {
-		return nil, err
+		if appErr, ok := errors.AsType[apperror.AppError](err); ok {
+			return nil, appErr.WithMetadata(apperror.KeyAttemptedID, user.Email)
+		} else {
+			return nil, err
+		}
 	}
 
 	slog.InfoContext(ctx, "User created", slog.String("user_id", result.ID.Hex()))

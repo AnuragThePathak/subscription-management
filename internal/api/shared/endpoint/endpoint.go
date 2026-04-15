@@ -68,25 +68,31 @@ func (h *RequestHandler) ServeRequest(req InternalRequest) {
 
 		if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 			status := appErr.Status()
+
+			logAttrs := []any{
+				slog.String("method", req.R.Method),
+				slog.String("path", req.R.URL.Path),
+				slog.Int("status", status),
+				slog.String("error_code", string(appErr.Code())),
+				slog.String("message", appErr.Message()),
+			}
+			for k, v := range appErr.Metadata() {
+				logAttrs = append(logAttrs, slog.Any(string(k), v))
+			}
+
 			if status >= 500 {
 				if span.IsRecording() {
 					span.RecordError(err)
 					span.SetStatus(codes.Error, appErr.Message())
 				}
+
+				logAttrs = append(logAttrs, slog.Any("error", err))
 				slog.ErrorContext(req.R.Context(), "Request failed",
-					slog.String("method", req.R.Method),
-					slog.String("path", req.R.URL.Path),
-					slog.Int("status", status),
-					slog.String("error_code", string(appErr.Code())),
-					slog.Any("error", err),
+					logAttrs...,
 				)
 			} else {
 				slog.WarnContext(req.R.Context(), "Request rejected",
-					slog.String("method", req.R.Method),
-					slog.String("path", req.R.URL.Path),
-					slog.Int("status", status),
-					slog.String("error_code", string(appErr.Code())),
-					slog.String("message", appErr.Message()),
+					logAttrs...,
 				)
 			}
 			WriteAPIResponse(req.W, status, map[string]string{"error": appErr.Message()})
@@ -95,6 +101,7 @@ func (h *RequestHandler) ServeRequest(req InternalRequest) {
 				span.RecordError(err)
 				span.SetStatus(codes.Error, err.Error())
 			}
+			
 			slog.ErrorContext(req.R.Context(), "Unhandled request error",
 				slog.String("method", req.R.Method),
 				slog.String("path", req.R.URL.Path),

@@ -24,9 +24,11 @@ const (
 type AppError interface {
 	error
 	Code() ErrorCode
+	Unwrap() error
 	Message() string
 	Status() int
-	Unwrap() error
+	Metadata() map[MetaKey]any
+	WithMetadata(key MetaKey, value any) AppError
 }
 
 type appError struct {
@@ -34,6 +36,7 @@ type appError struct {
 	message string
 	status  int
 	err     error
+	metadata map[MetaKey]any
 }
 
 func (e *appError) Error() string {
@@ -41,6 +44,12 @@ func (e *appError) Error() string {
 		return fmt.Sprintf("%s: %s (%v)", e.code, e.message, e.err)
 	}
 	return fmt.Sprintf("%s: %s", e.code, e.message)
+}
+
+// Unwrap returns the underlying wrapped error, allowing standard library
+// functions like errors.Is and errors.As to work seamlessly.
+func (e *appError) Unwrap() error {
+	return e.err
 }
 
 func (e *appError) Code() ErrorCode {
@@ -55,8 +64,17 @@ func (e *appError) Status() int {
 	return e.status
 }
 
-// Unwrap returns the underlying wrapped error, allowing standard library
-// functions like errors.Is and errors.As to work seamlessly.
-func (e *appError) Unwrap() error {
-	return e.err
+func (e *appError) Metadata() map[MetaKey]any {
+	return e.metadata
+}
+
+// WithMetadata adds metadata to the error.
+// It returns a new error with the metadata added,
+// and also modifies the original error.
+func (e *appError) WithMetadata(key MetaKey, value any) AppError {
+	if e.metadata == nil {
+		e.metadata = make(map[MetaKey]any)
+	}
+	e.metadata[key] = value
+	return e
 }

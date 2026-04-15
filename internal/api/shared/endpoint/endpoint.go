@@ -9,6 +9,8 @@ import (
 
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/apperror"
 	"github.com/go-playground/validator/v10"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // RequestHandler holds shared dependencies for processing HTTP requests.
@@ -62,9 +64,15 @@ func (h *RequestHandler) ServeRequest(req InternalRequest) {
 
 	respBodyObj, err := req.EndpointLogic()
 	if err != nil {
+		span := trace.SpanFromContext(req.R.Context())
+
 		if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 			status := appErr.Status()
 			if status >= 500 {
+				if span.IsRecording() {
+					span.RecordError(err)
+					span.SetStatus(codes.Error, appErr.Message())
+				}
 				slog.ErrorContext(req.R.Context(), "Request failed",
 					slog.String("method", req.R.Method),
 					slog.String("path", req.R.URL.Path),
@@ -83,6 +91,10 @@ func (h *RequestHandler) ServeRequest(req InternalRequest) {
 			}
 			WriteAPIResponse(req.W, status, map[string]string{"error": appErr.Message()})
 		} else {
+			if span.IsRecording() {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+			}
 			slog.ErrorContext(req.R.Context(), "Unhandled request error",
 				slog.String("method", req.R.Method),
 				slog.String("path", req.R.URL.Path),

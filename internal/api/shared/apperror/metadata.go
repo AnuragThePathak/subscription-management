@@ -1,10 +1,10 @@
 package apperror
 
-// MetaKey defines a strict type for structured logging keys
-type MetaKey string
+// metaKey defines a strict type for structured logging keys
+type metaKey string
 
 const (
-	KeyUserEmail    MetaKey = "user_email"
-	KeyUserID       MetaKey = "user_id"
-	KeyAttemptedID  MetaKey = "attempted_id"
+	KeyUserEmail   metaKey = "user_email"
+	KeyUserID      metaKey = "user_id"
+	KeyAttemptedID metaKey = "attempted_id"
 )

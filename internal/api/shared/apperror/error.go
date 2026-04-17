@@ -8,16 +8,16 @@ import (
 type ErrorCode string
 
 const (
-	ErrInternal      ErrorCode = "INTERNAL"
-	ErrUnauthorized  ErrorCode = "UNAUTHORIZED"
-	ErrForbidden     ErrorCode = "FORBIDDEN"
-	ErrNotFound      ErrorCode = "NOT_FOUND"
-	ErrConflict      ErrorCode = "CONFLICT"
-	ErrBadRequest    ErrorCode = "BAD_REQUEST"
-	ErrValidation    ErrorCode = "VALIDATION"
-	ErrTimeout       ErrorCode = "TIMEOUT"
-	ErrDB            ErrorCode = "DB_ERROR"
-	ErrRateLimited   ErrorCode = "RATE_LIMITED"
+	ErrInternal     ErrorCode = "INTERNAL"
+	ErrUnauthorized ErrorCode = "UNAUTHORIZED"
+	ErrForbidden    ErrorCode = "FORBIDDEN"
+	ErrNotFound     ErrorCode = "NOT_FOUND"
+	ErrConflict     ErrorCode = "CONFLICT"
+	ErrBadRequest   ErrorCode = "BAD_REQUEST"
+	ErrValidation   ErrorCode = "VALIDATION"
+	ErrTimeout      ErrorCode = "TIMEOUT"
+	ErrDB           ErrorCode = "DB_ERROR"
+	ErrRateLimited  ErrorCode = "RATE_LIMITED"
 )
 
 // AppError defines a structured application error.
@@ -27,16 +27,16 @@ type AppError interface {
 	Unwrap() error
 	Message() string
 	Status() int
-	Metadata() map[MetaKey]any
-	WithMetadata(key MetaKey, value any) AppError
+	Metadata() map[metaKey]any
+	WithMetadata(key metaKey, value any) AppError
 }
 
 type appError struct {
-	code    ErrorCode
-	message string
-	status  int
-	err     error
-	metadata map[MetaKey]any
+	code     ErrorCode
+	message  string
+	status   int
+	err      error
+	metadata map[metaKey]any
 }
 
 func (e *appError) Error() string {
@@ -64,16 +64,16 @@ func (e *appError) Status() int {
 	return e.status
 }
 
-func (e *appError) Metadata() map[MetaKey]any {
+func (e *appError) Metadata() map[metaKey]any {
 	return e.metadata
 }
 
 // WithMetadata adds metadata to the error.
 // It returns a new error with the metadata added,
 // and also modifies the original error.
-func (e *appError) WithMetadata(key MetaKey, value any) AppError {
+func (e *appError) WithMetadata(key metaKey, value any) AppError {
 	if e.metadata == nil {
-		e.metadata = make(map[MetaKey]any)
+		e.metadata = make(map[metaKey]any)
 	}
 	e.metadata[key] = value
 	return e

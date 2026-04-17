@@ -4,7 +4,8 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/anuragthepathak/subscription-management/internal/lib"
+	"github.com/anuragthepathak/subscription-management/internal/core/appctx"
+	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/hibiken/asynq"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -31,31 +32,31 @@ func (h *traceHandler) Handle(ctx context.Context, record slog.Record) error {
 	record = record.Clone()
 
 	// Add user ID to the log record if available
-	if userID, ok := lib.GetUserID(ctx); ok {
-		record.AddAttrs(slog.String("user_id", userID))
+	if userID, ok := appctx.GetUserID(ctx); ok {
+		record.AddAttrs(logattr.UserID(userID))
 	}
 
 	// Add subscription ID to the log record if available
-	if subscriptionID, ok := lib.GetSubscriptionID(ctx); ok {
-		record.AddAttrs(slog.String("subscription_id", subscriptionID))
+	if subscriptionID, ok := appctx.GetSubscriptionID(ctx); ok {
+		record.AddAttrs(logattr.SubscriptionID(subscriptionID))
 	}
-	
+
 	// Add task type to the log record if available
-	if taskType, ok := lib.GetTaskType(ctx); ok {
-		record.AddAttrs(slog.String("task_type", taskType))
+	if taskType, ok := appctx.GetTaskType(ctx); ok {
+		record.AddAttrs(logattr.TaskType(taskType))
 	}
 
 	// Add task ID to the log record if available
 	if taskID, ok := asynq.GetTaskID(ctx); ok {
-		record.AddAttrs(slog.String("asynq_task_id", taskID))
+		record.AddAttrs(logattr.TaskID(taskID))
 	}
 
 	// Add trace ID and span ID to the log record if available
 	spanCtx := trace.SpanContextFromContext(ctx)
 	if spanCtx.IsValid() {
 		record.AddAttrs(
-			slog.String("trace_id", spanCtx.TraceID().String()),
-			slog.String("span_id", spanCtx.SpanID().String()),
+			logattr.TraceID(spanCtx.TraceID().String()),
+			logattr.SpanID(spanCtx.SpanID().String()),
 		)
 	}
 

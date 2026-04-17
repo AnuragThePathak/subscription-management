@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -28,7 +29,7 @@ func (r *Redis) Shutdown(ctx context.Context) error {
 	select {
 	case err := <-closeChan:
 		if err != nil {
-			slog.Error("Failed to close Redis client", slog.Any("error", err))
+			slog.Error("Failed to close Redis client", logattr.Error(err))
 		} else {
 			slog.Info("Redis client closed successfully")
 		}
@@ -42,7 +43,7 @@ func (r *Redis) Shutdown(ctx context.Context) error {
 // Ping checks the connection to the Redis server.
 func (r *Redis) Ping(ctx context.Context) error {
 	if err := r.Client.Ping(ctx).Err(); err != nil {
-		slog.Error("Redis ping failed", slog.Any("error", err))
+		slog.Error("Redis ping failed", logattr.Error(err))
 		return err
 	}
 	slog.Debug("Redis ping successful")

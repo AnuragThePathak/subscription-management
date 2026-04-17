@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
+	"github.com/anuragthepathak/subscription-management/internal/core/traceattr"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/anuragthepathak/subscription-management/internal/observability"
 	"go.opentelemetry.io/otel"
@@ -59,7 +61,7 @@ func (es *EmailSender) SendReminderEmail(ctx context.Context, toEmail string, us
 	ctx, span := es.tracer.Start(ctx, "Send Reminder Email",
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
-			observability.EmailDaysBefore(daysBefore),
+			traceattr.EmailDaysBefore(daysBefore),
 		),
 	)
 	defer span.End()
@@ -112,8 +114,8 @@ func (es *EmailSender) SendReminderEmail(ctx context.Context, toEmail string, us
 
 	// Log the successful email sending.
 	slog.InfoContext(ctx, "Reminder email sent",
-		slog.String("template", string(templateType)),
-		slog.String("subscription", subscription.Name),
+		logattr.Template(string(templateType)),
+		logattr.SubscriptionName(subscription.Name),
 	)
 
 	return nil
@@ -178,7 +180,7 @@ func (es *EmailSender) SendRenewalConfirmationEmail(
 	}
 	// Log the successful email sending.
 	slog.InfoContext(ctx, "Renewal confirmation email sent",
-		slog.String("subscription", subscription.Name),
+		logattr.SubscriptionName(subscription.Name),
 	)
 	return nil
 }

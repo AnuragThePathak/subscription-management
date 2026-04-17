@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/spf13/viper"
 )
 
@@ -34,7 +35,7 @@ func LoadConfig() (*Config, error) {
 
 	// Read the YAML configuration file.
 	if err := viper.ReadInConfig(); err != nil {
-		slog.Warn("Config file not found, using defaults", slog.Any("error", err))
+		slog.Warn("Config file not found, using defaults", logattr.Error(err))
 	}
 
 	// Enable environment variables to override config file settings.
@@ -43,11 +44,11 @@ func LoadConfig() (*Config, error) {
 
 	var config Config
 	if err := viper.Unmarshal(&config); err != nil {
-		slog.Error("Failed to unmarshal configuration", slog.Any("error", err))
+		slog.Error("Failed to unmarshal configuration", logattr.Error(err))
 		return nil, err
 	}
 	if err := config.Validate(); err != nil {
-		slog.Error("Configuration validation failed", slog.Any("error", err))
+		slog.Error("Configuration validation failed", logattr.Error(err))
 		return nil, err
 	}
 	slog.Info("Configuration loaded successfully")

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/anuragthepathak/subscription-management/internal/adapters"
+	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/anuragthepathak/subscription-management/internal/observability"
 	"github.com/go-redis/redis_rate/v10"
 	"github.com/hibiken/asynq"
@@ -69,15 +70,15 @@ func DatabaseConnection(dbConfig DatabaseConfig, otelEnabled bool) (*adapters.Da
 	var err error
 	if db.Client, err = mongo.Connect(dbClientOpts); err != nil {
 		slog.Error("Failed to initialize MongoDB client",
-			slog.String("host", redactURL(dbConfig.URL)),
-			slog.Any("error", err),
+			logattr.Host(redactURL(dbConfig.URL)),
+			logattr.Error(err),
 		)
 		return nil, err
 	}
 	db.DB = db.Client.Database(dbConfig.Name)
 	slog.Info("Initialized MongoDB client",
-		slog.String("host", redactURL(dbConfig.URL)),
-		slog.String("database", dbConfig.Name),
+		logattr.Host(redactURL(dbConfig.URL)),
+		logattr.Database(dbConfig.Name),
 	)
 	return &db, nil
 }
@@ -93,11 +94,11 @@ func RedisConnection(redisConfig RedisConfig, otelEnabled bool) *adapters.Redis 
 
 	if otelEnabled {
 		if err := redisotel.InstrumentTracing(rdb.Client); err != nil {
-			slog.Error("Failed to instrument Redis with tracing", slog.Any("error", err))
+			slog.Error("Failed to instrument Redis with tracing", logattr.Error(err))
 		}
 	}
 
-	slog.Info("Connected to Redis", slog.String("url", redisConfig.URL), slog.Int("db", redisConfig.DB))
+	slog.Info("Connected to Redis", logattr.Host(redisConfig.URL), logattr.Database(fmt.Sprintf("%d", redisConfig.DB)))
 	return &rdb
 }
 
@@ -150,7 +151,7 @@ func SetupLogger(env string, otelEnabled bool) error {
 	handler = observability.NewTraceHandler(handler)
 
 	slog.SetDefault(slog.New(handler))
-	slog.Info("Logger initialized", slog.String("environment", env))
+	slog.Info("Logger initialized", logattr.Env(env))
 	return nil
 }
 
@@ -162,7 +163,7 @@ func NewRateLimit(rateConfig *RateLimiterConfig) *redis_rate.Limit {
 	if rateConfig.Period == 0 {
 		rateConfig.Period = time.Minute
 	}
-	slog.Info("Rate limiter configured", slog.Int("rate", rateConfig.Rate), slog.Int("burst", rateConfig.Burst), slog.Duration("period", rateConfig.Period))
+	slog.Info("Rate limiter configured", logattr.Rate(rateConfig.Rate), logattr.Burst(rateConfig.Burst), logattr.Period(rateConfig.Period))
 
 	return &redis_rate.Limit{
 		Rate:   rateConfig.Rate,
@@ -174,8 +175,8 @@ func NewRateLimit(rateConfig *RateLimiterConfig) *redis_rate.Limit {
 // QueueRedisConfig returns Redis configuration for the task queue.
 func QueueRedisConfig(redisConfig RedisConfig) *asynq.RedisClientOpt {
 	slog.Debug("Queue Redis configuration initialized",
-		slog.String("addr", redactURL(redisConfig.URL)),
-		slog.Int("db", redisConfig.DB),
+		logattr.Host(redactURL(redisConfig.URL)),
+		logattr.Database(fmt.Sprintf("%d", redisConfig.DB)),
 	)
 	return &asynq.RedisClientOpt{
 		Addr:     redisConfig.URL,

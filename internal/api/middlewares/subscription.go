@@ -3,8 +3,8 @@ package middlewares
 import (
 	"net/http"
 
-	"github.com/anuragthepathak/subscription-management/internal/lib"
-	"github.com/anuragthepathak/subscription-management/internal/observability"
+	"github.com/anuragthepathak/subscription-management/internal/core/appctx"
+	"github.com/anuragthepathak/subscription-management/internal/core/traceattr"
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -21,12 +21,12 @@ func WithSubscriptionID(next http.Handler) http.Handler {
 		}
 
 		// Inject into context
-		ctx := lib.WithSubscriptionID(r.Context(), subscriptionID)
+		ctx := appctx.WithSubscriptionID(r.Context(), subscriptionID)
 
 		// Update OpenTelemetry span
 		span := trace.SpanFromContext(ctx)
 		if span.IsRecording() {
-			span.SetAttributes(observability.SubscriptionID(subscriptionID))
+			span.SetAttributes(traceattr.SubscriptionID(subscriptionID))
 		}
 
 		next.ServeHTTP(w, r.WithContext(ctx))

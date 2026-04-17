@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
@@ -17,7 +18,7 @@ type Database struct {
 func (db *Database) Shutdown(ctx context.Context) error {
 	slog.Info("Disconnecting MongoDB client")
 	if err := db.Client.Disconnect(ctx); err != nil {
-		slog.Error("Failed to disconnect MongoDB client", slog.Any("error", err))
+		slog.Error("Failed to disconnect MongoDB client", logattr.Error(err))
 		return err
 	}
 	slog.Info("MongoDB client disconnected successfully")
@@ -27,7 +28,7 @@ func (db *Database) Shutdown(ctx context.Context) error {
 // Ping checks the connection to the MongoDB server.
 func (db *Database) Ping(ctx context.Context) error {
 	if err := db.Client.Ping(ctx, nil); err != nil {
-		slog.Error("MongoDB ping failed", slog.Any("error", err))
+		slog.Error("MongoDB ping failed", logattr.Error(err))
 		return err
 	}
 	slog.Debug("MongoDB ping successful")

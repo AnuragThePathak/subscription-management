@@ -6,9 +6,10 @@ import (
 	"strings"
 
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/endpoint"
+	"github.com/anuragthepathak/subscription-management/internal/core/appctx"
+	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/anuragthepathak/subscription-management/internal/domain/services"
-	"github.com/anuragthepathak/subscription-management/internal/lib"
 	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -32,14 +33,14 @@ func Authentication(jwtService services.JWTService) func(next http.Handler) http
 			tokenString := parts[1]
 			claims, err := jwtService.ValidateToken(tokenString, models.AccessToken)
 			if err != nil {
-				slog.WarnContext(r.Context(), "Invalid token", slog.Any("error", err))
+				slog.WarnContext(r.Context(), "Invalid token", logattr.Error(err))
 				endpoint.WriteAPIResponse(w, http.StatusUnauthorized, map[string]string{"error": "Invalid token"})
 				return
 			}
 
 			// Add user claims to context.
-			ctx := lib.WithUserID(r.Context(), claims.UserID)
-			ctx = lib.WithUserEmail(ctx, claims.Email)
+			ctx := appctx.WithUserID(r.Context(), claims.UserID)
+			ctx = appctx.WithUserEmail(ctx, claims.Email)
 
 			// Add user ID to the span if available
 			span := trace.SpanFromContext(ctx)

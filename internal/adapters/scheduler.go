@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/anuragthepathak/subscription-management/internal/scheduler"
 )
 
@@ -28,7 +29,7 @@ func (s *Scheduler) Shutdown(ctx context.Context) error {
 	select {
 	case err := <-closeChan:
 		if err != nil {
-			slog.Error("Failed to stop subscription scheduler", slog.Any("error", err))
+			slog.Error("Failed to stop subscription scheduler", logattr.Error(err))
 		} else {
 			slog.Info("Subscription scheduler stopped successfully")
 		}

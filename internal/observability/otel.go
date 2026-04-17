@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 
+	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	otelprometheus "go.opentelemetry.io/otel/exporters/prometheus"
@@ -68,8 +69,8 @@ func InitOTel(ctx context.Context, cfg Config) (*Provider, error) {
 	otel.SetMeterProvider(meterProvider)
 
 	slog.Info("OpenTelemetry initialized",
-		slog.String("service", cfg.ServiceName),
-		slog.String("jaeger", cfg.JaegerEndpoint),
+		logattr.Service(cfg.ServiceName),
+		logattr.Jaeger(cfg.JaegerEndpoint),
 	)
 
 	return &Provider{
@@ -85,14 +86,14 @@ func (p *Provider) Shutdown(ctx context.Context) error {
 	var errs []error
 	if err := p.tracerProvider.Shutdown(ctx); err != nil {
 		slog.Error("Failed to shutdown tracer provider",
-			slog.Any("error", err),
+			logattr.Error(err),
 		)
 		errs = append(errs, err)
 	}
 
 	if err := p.meterProvider.Shutdown(ctx); err != nil {
 		slog.Error("Failed to shutdown meter provider",
-			slog.Any("error", err),
+			logattr.Error(err),
 		)
 		errs = append(errs, err)
 	}

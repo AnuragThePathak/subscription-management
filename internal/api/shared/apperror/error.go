@@ -2,6 +2,7 @@ package apperror
 
 import (
 	"fmt"
+	"log/slog"
 )
 
 // ErrorCode represents the type of error.
@@ -27,16 +28,16 @@ type AppError interface {
 	Unwrap() error
 	Message() string
 	Status() int
-	Metadata() map[metaKey]any
-	WithMetadata(key metaKey, value any) AppError
+	LogAttributes() []slog.Attr
+	WithLogAttributes(attrs ...slog.Attr) AppError
 }
 
 type appError struct {
-	code     ErrorCode
-	message  string
-	status   int
-	err      error
-	metadata map[metaKey]any
+	code    ErrorCode
+	message string
+	status  int
+	err     error
+	attrs   []slog.Attr
 }
 
 func (e *appError) Error() string {
@@ -64,17 +65,12 @@ func (e *appError) Status() int {
 	return e.status
 }
 
-func (e *appError) Metadata() map[metaKey]any {
-	return e.metadata
+func (e *appError) LogAttributes() []slog.Attr {
+	return e.attrs
 }
 
-// WithMetadata adds metadata to the error.
-// It returns a new error with the metadata added,
-// and also modifies the original error.
-func (e *appError) WithMetadata(key metaKey, value any) AppError {
-	if e.metadata == nil {
-		e.metadata = make(map[metaKey]any)
-	}
-	e.metadata[key] = value
+// WithLogAttributes adds logging attributes to the error.
+func (e *appError) WithLogAttributes(attrs ...slog.Attr) AppError {
+	e.attrs = append(e.attrs, attrs...)
 	return e
 }

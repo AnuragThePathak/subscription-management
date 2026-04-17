@@ -4,7 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/anuragthepathak/subscription-management/internal/lib"
+	"github.com/anuragthepathak/subscription-management/internal/core/appctx"
+	"github.com/anuragthepathak/subscription-management/internal/core/traceattr"
 	"github.com/hibiken/asynq"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
@@ -51,11 +52,11 @@ func AsynqTracingMiddleware(serviceName string) asynq.MiddlewareFunc {
 
 			// Inject Task ID for trace span
 			if taskID, ok := asynq.GetTaskID(ctx); ok {
-				span.SetAttributes(TaskID(taskID))
+				span.SetAttributes(traceattr.TaskID(taskID))
 			}
 
 			// Inject Task type for logs
-			ctx = lib.WithTaskType(ctx, task.Type())
+			ctx = appctx.WithTaskType(ctx, task.Type())
 
 			// Execute actual task handler
 			err := next.ProcessTask(ctx, task)

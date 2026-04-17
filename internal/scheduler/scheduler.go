@@ -8,6 +8,9 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/anuragthepathak/subscription-management/internal/core/appctx"
+	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
+	"github.com/anuragthepathak/subscription-management/internal/core/traceattr"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/anuragthepathak/subscription-management/internal/domain/services"
 	"github.com/anuragthepathak/subscription-management/internal/lib"
@@ -100,9 +103,7 @@ func (s *SubscriptionScheduler) Start(ctx context.Context) error {
 			return ctx.Err()
 		case <-ticker.C:
 			if err := s.pollSubscriptions(ctx); err != nil {
-				slog.Error("Subscription poll failed",
-					slog.Any("error", err),
-				)
+				slog.Error("Failed to fetch active subscriptions", logattr.Error(err))
 			}
 		}
 	}
@@ -113,8 +114,8 @@ func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
 	// Start a trace span for this entire scheduler tick execution
 	ctx, span := s.tracer.Start(ctx, "Scheduler Tick: Poll Subscriptions",
 		trace.WithAttributes(
-			observability.SchedulerInterval(s.interval.String()),
-			observability.SchedulerReminderDays(s.reminderDays),
+			traceattr.SchedulerInterval(s.interval.String()),
+			traceattr.SchedulerReminderDays(s.reminderDays),
 		),
 	)
 	defer span.End()
@@ -126,7 +127,7 @@ func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
 	// Handle reminder tasks
 	if err := s.handleReminderTasks(ctx); err != nil {
 		slog.ErrorContext(ctx, "Reminder tasks failed",
-			slog.Any("error", err),
+			logattr.Error(err),
 		)
 		errs = append(errs, err)
 	}
@@ -134,7 +135,7 @@ func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
 	// Handle renewal tasks
 	if err := s.handleRenewalTasks(ctx); err != nil {
 		slog.ErrorContext(ctx, "Renewal tasks failed",
-			slog.Any("error", err),
+			logattr.Error(err),
 		)
 		errs = append(errs, err)
 	}
@@ -142,7 +143,7 @@ func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
 	// Handle expiration tasks
 	if err := s.handleExpirationTasks(ctx); err != nil {
 		slog.ErrorContext(ctx, "Expiration tasks failed",
-			slog.Any("error", err),
+			logattr.Error(err),
 		)
 		errs = append(errs, err)
 	}
@@ -157,10 +158,10 @@ func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
 
 // handleReminderTasks checks for subscriptions needing reminders and schedules tasks.
 func (s *SubscriptionScheduler) handleReminderTasks(ctx context.Context) error {
-	ctx = lib.WithTaskType(ctx, ReminderTask)
+	ctx = appctx.WithTaskType(ctx, ReminderTask)
 	ctx, span := s.tracer.Start(ctx, "Phase: Reminder Tasks",
 		trace.WithAttributes(
-			observability.TaskType(ReminderTask),
+			traceattr.TaskType(ReminderTask),
 		),
 	)
 	defer span.End()
@@ -186,8 +187,8 @@ func (s *SubscriptionScheduler) handleReminderTasks(ctx context.Context) error {
 		if err != nil {
 			span.RecordError(err)
 			slog.ErrorContext(sCtx, "Failed to check Redis for sent reminder",
-				slog.Int("days_before", daysBefore),
-				slog.Any("error", err),
+				logattr.DaysBefore(daysBefore),
+				logattr.Error(err),
 			)
 			continue
 		}
@@ -196,8 +197,9 @@ func (s *SubscriptionScheduler) handleReminderTasks(ctx context.Context) error {
 			if err := s.scheduleReminderTask(sCtx, subscription, daysBefore); err != nil {
 				span.RecordError(err)
 				slog.ErrorContext(sCtx, "Failed to schedule reminder task",
-					slog.Int("days_before", daysBefore),
-					slog.Any("error", err),
+					logattr.SubscriptionID(subscription.ID.Hex()),
+					logattr.DaysBefore(daysBefore),
+					logattr.Error(err),
 				)
 			} else {
 				scheduled++
@@ -205,10 +207,10 @@ func (s *SubscriptionScheduler) handleReminderTasks(ctx context.Context) error {
 		}
 	}
 
-	span.SetAttributes(observability.TasksScheduled(scheduled))
+	span.SetAttributes(traceattr.TasksScheduled(scheduled))
 	if scheduled > 0 {
 		slog.InfoContext(ctx, "Reminder tasks scheduled",
-			slog.Int("count", scheduled),
+			logattr.Count(scheduled),
 		)
 	}
 
@@ -217,10 +219,10 @@ func (s *SubscriptionScheduler) handleReminderTasks(ctx context.Context) error {
 
 // handleRenewalTasks checks for subscriptions needing automatic renewal and schedules tasks.
 func (s *SubscriptionScheduler) handleRenewalTasks(ctx context.Context) error {
-	ctx = lib.WithTaskType(ctx, RenewalTask)
+	ctx = appctx.WithTaskType(ctx, RenewalTask)
 	ctx, span := s.tracer.Start(ctx, "Phase: Renewal Tasks",
 		trace.WithAttributes(
-			observability.TaskType(RenewalTask),
+			traceattr.TaskType(RenewalTask),
 		),
 	)
 	defer span.End()
@@ -242,17 +244,17 @@ func (s *SubscriptionScheduler) handleRenewalTasks(ctx context.Context) error {
 		if err := s.scheduleRenewalTask(sCtx, subscription); err != nil {
 			span.RecordError(err)
 			slog.ErrorContext(sCtx, "Failed to schedule renewal task",
-				slog.Any("error", err),
+				logattr.Error(err),
 			)
 		} else {
 			scheduled++
 		}
 	}
 
-	span.SetAttributes(observability.TasksScheduled(scheduled))
+	span.SetAttributes(traceattr.TasksScheduled(scheduled))
 	if scheduled > 0 {
 		slog.InfoContext(ctx, "Renewal tasks scheduled",
-			slog.Int("count", scheduled),
+			logattr.Count(scheduled),
 		)
 	}
 
@@ -261,10 +263,10 @@ func (s *SubscriptionScheduler) handleRenewalTasks(ctx context.Context) error {
 
 // handleExpirationTasks checks for subscriptions that are expired and schedules tasks.
 func (s *SubscriptionScheduler) handleExpirationTasks(ctx context.Context) error {
-	ctx = lib.WithTaskType(ctx, ExpirationTask)
+	ctx = appctx.WithTaskType(ctx, ExpirationTask)
 	ctx, span := s.tracer.Start(ctx, "Phase: Expiration Tasks",
 		trace.WithAttributes(
-			observability.TaskType(ExpirationTask),
+			traceattr.TaskType(ExpirationTask),
 		),
 	)
 	defer span.End()
@@ -285,17 +287,17 @@ func (s *SubscriptionScheduler) handleExpirationTasks(ctx context.Context) error
 		if err := s.scheduleExpirationTask(sCtx, subscription); err != nil {
 			span.RecordError(err)
 			slog.ErrorContext(sCtx, "Failed to schedule expiration task",
-				slog.Any("error", err),
+				logattr.Error(err),
 			)
 		} else {
 			scheduled++
 		}
 	}
 
-	span.SetAttributes(observability.TasksScheduled(scheduled))
+	span.SetAttributes(traceattr.TasksScheduled(scheduled))
 	if scheduled > 0 {
 		slog.InfoContext(ctx, "Expiration tasks scheduled",
-			slog.Int("count", scheduled),
+			logattr.Count(scheduled),
 		)
 	}
 
@@ -332,7 +334,7 @@ func (s *SubscriptionScheduler) scheduleReminderTask(ctx context.Context, subscr
 	defer span.End()
 	observability.EnrichSpan(ctx)
 	span.SetAttributes(
-		observability.SchedulerDaysBefore(daysBefore),
+		traceattr.SchedulerDaysBefore(daysBefore),
 	)
 
 	payload := ReminderPayload{
@@ -364,10 +366,10 @@ func (s *SubscriptionScheduler) scheduleReminderTask(ctx context.Context, subscr
 		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("failed to enqueue task: %w", err)
 	}
-	span.SetAttributes(observability.TaskID(info.ID))
+	span.SetAttributes(traceattr.TaskID(info.ID))
 
 	slog.DebugContext(ctx, "Reminder task enqueued",
-		slog.String("task_id", info.ID),
+		logattr.TaskID(info.ID),
 		slog.Int("days_before", daysBefore),
 	)
 
@@ -405,7 +407,7 @@ func (s *SubscriptionScheduler) scheduleRenewalTask(ctx context.Context, subscri
 	if processAt.Before(time.Now()) {
 		processAt = time.Now()
 	}
-	span.SetAttributes(observability.ProcessAt(processAt))
+	span.SetAttributes(traceattr.ProcessAt(processAt))
 
 	info, err := s.client.Enqueue(
 		task,
@@ -420,11 +422,11 @@ func (s *SubscriptionScheduler) scheduleRenewalTask(ctx context.Context, subscri
 		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("failed to enqueue task: %w", err)
 	}
-	span.SetAttributes(observability.TaskID(info.ID))
+	span.SetAttributes(traceattr.TaskID(info.ID))
 
 	slog.DebugContext(ctx, "Renewal task enqueued",
-		slog.String("task_id", info.ID),
-		slog.String("process_at", processAt.Format(time.RFC3339)),
+		logattr.TaskID(info.ID),
+		logattr.ProcessAt(processAt),
 	)
 
 	return nil
@@ -468,10 +470,10 @@ func (s *SubscriptionScheduler) scheduleExpirationTask(ctx context.Context, subs
 		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("failed to enqueue task: %w", err)
 	}
-	span.SetAttributes(observability.TaskID(info.ID))
+	span.SetAttributes(traceattr.TaskID(info.ID))
 
 	slog.DebugContext(ctx, "Expiration task enqueued",
-		slog.String("task_id", info.ID),
+		logattr.TaskID(info.ID),
 	)
 
 	return nil

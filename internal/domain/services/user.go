@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/apperror"
+	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/anuragthepathak/subscription-management/internal/domain/repositories"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -50,12 +51,12 @@ func (us *userService) CreateUser(ctx context.Context, user *models.User) (*mode
 	existingUser, err := us.userRepository.FindByEmail(ctx, user.Email)
 	if existingUser != nil {
 		return nil, apperror.NewConflictError("Email already in use").
-			WithMetadata(apperror.KeyAttemptedID, user.Email)
+			WithLogAttributes(logattr.AttemptedID(user.Email))
 	}
 	if err != nil {
 		if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 			if appErr.Code() != apperror.ErrNotFound {
-				return nil, appErr.WithMetadata(apperror.KeyAttemptedID, user.Email)
+				return nil, appErr.WithLogAttributes(logattr.AttemptedID(user.Email))
 			}
 		} else {
 			return nil, err
@@ -66,7 +67,7 @@ func (us *userService) CreateUser(ctx context.Context, user *models.User) (*mode
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), 10)
 	if err != nil {
 		return nil, apperror.NewInternalError(err).
-			WithMetadata(apperror.KeyAttemptedID, user.Email)
+			WithLogAttributes(logattr.AttemptedID(user.Email))
 	}
 	user.Password = string(hashedPassword)
 
@@ -82,13 +83,13 @@ func (us *userService) CreateUser(ctx context.Context, user *models.User) (*mode
 	result, err := us.userRepository.Create(ctx, user)
 	if err != nil {
 		if appErr, ok := errors.AsType[apperror.AppError](err); ok {
-			return nil, appErr.WithMetadata(apperror.KeyAttemptedID, user.Email)
+			return nil, appErr.WithLogAttributes(logattr.AttemptedID(user.Email))
 		} else {
 			return nil, err
 		}
 	}
 
-	slog.InfoContext(ctx, "User created", slog.String("user_id", result.ID.Hex()))
+	slog.InfoContext(ctx, "User created", logattr.UserID(result.ID.Hex()))
 	return result, nil
 }
 

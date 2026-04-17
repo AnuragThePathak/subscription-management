@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
+	"github.com/anuragthepathak/subscription-management/internal/core/traceattr"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/anuragthepathak/subscription-management/internal/domain/services"
 	"github.com/anuragthepathak/subscription-management/internal/notifications"
@@ -64,7 +66,7 @@ func NewReminderWorker(
 func (w *ReminderWorker) Start() error {
 	// Register task handlers.
 	mux := asynq.NewServeMux()
-	
+
 	// Inject OpenTelemetry middleware to extract trace IDs from the queue payload headers
 	mux.Use(observability.AsynqTracingMiddleware(w.name))
 
@@ -86,13 +88,12 @@ func (w *ReminderWorker) handleSubscriptionReminder(ctx context.Context, task *a
 	observability.EnrichSpan(ctx)
 	if span := trace.SpanFromContext(ctx); span.IsRecording() {
 		span.SetAttributes(
-			observability.SchedulerDaysBefore(payload.DaysBefore),
+			traceattr.SchedulerDaysBefore(payload.DaysBefore),
 		)
 	}
-		
 
 	slog.DebugContext(ctx, "Processing subscription reminder",
-		slog.Int("days_before", payload.DaysBefore),
+		logattr.DaysBefore(payload.DaysBefore),
 	)
 
 	// Parse the subscription ID.
@@ -110,7 +111,7 @@ func (w *ReminderWorker) handleSubscriptionReminder(ctx context.Context, task *a
 	// Ensure the subscription is still active.
 	if subscription.Status != models.Active {
 		slog.DebugContext(ctx, "Skipping reminder for non-active subscription",
-			slog.String("status", string(subscription.Status)),
+			logattr.Status(string(subscription.Status)),
 		)
 		return nil
 	}
@@ -146,7 +147,7 @@ func (w *ReminderWorker) handleSubscriptionRenewal(ctx context.Context, task *as
 	// Ensure the subscription is still active
 	if subscription.Status != models.Active {
 		slog.DebugContext(ctx, "Skipping renewal for non-active subscription",
-			slog.String("status", string(subscription.Status)),
+			logattr.Status(string(subscription.Status)),
 		)
 		return nil
 	}
@@ -156,7 +157,7 @@ func (w *ReminderWorker) handleSubscriptionRenewal(ctx context.Context, task *as
 	renewalWindow := now.Add(time.Hour * RenewalHoursBeforeDay)
 	if subscription.ValidTill.After(renewalWindow) {
 		slog.DebugContext(ctx, "Skipping renewal: outside valid window",
-			slog.String("valid_till", subscription.ValidTill.Format(time.RFC3339)),
+			logattr.ValidTill(subscription.ValidTill),
 		)
 		return nil
 	}
@@ -168,14 +169,14 @@ func (w *ReminderWorker) handleSubscriptionRenewal(ctx context.Context, task *as
 	}
 
 	slog.InfoContext(ctx, "Subscription renewed",
-		slog.String("new_valid_till", renewedSubscription.ValidTill.Format(time.RFC3339)),
+		logattr.ValidTill(renewedSubscription.ValidTill),
 	)
 
 	// Send a confirmation email to the user
 	user, err := w.userService.FetchUserByIDInternal(ctx, subscription.UserID)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to fetch user for renewal notification",
-			slog.Any("error", err),
+			logattr.Error(err),
 		)
 		// Continue without sending email
 	} else {
@@ -187,7 +188,7 @@ func (w *ReminderWorker) handleSubscriptionRenewal(ctx context.Context, task *as
 			renewedSubscription,
 		); err != nil {
 			slog.ErrorContext(ctx, "Failed to send renewal confirmation email",
-				slog.Any("error", err),
+				logattr.Error(err),
 			)
 			// Continue execution even if email fails
 		}
@@ -222,7 +223,7 @@ func (w *ReminderWorker) handleSubscriptionExpiration(ctx context.Context, task 
 	// Ensure the subscription is canceled and past validity period
 	if subscription.Status != models.Canceled {
 		slog.DebugContext(ctx, "Skipping expiration for non-canceled subscription",
-			slog.String("status", string(subscription.Status)),
+			logattr.Status(string(subscription.Status)),
 		)
 		return nil
 	}
@@ -231,7 +232,7 @@ func (w *ReminderWorker) handleSubscriptionExpiration(ctx context.Context, task 
 	now := time.Now()
 	if subscription.ValidTill.After(now) {
 		slog.DebugContext(ctx, "Skipping expiration: subscription still valid",
-			slog.String("valid_till", subscription.ValidTill.Format(time.RFC3339)),
+			logattr.ValidTill(subscription.ValidTill),
 		)
 		return nil
 	}
@@ -263,13 +264,13 @@ func (w *ReminderWorker) sendReminderNotification(ctx context.Context, subscript
 		daysBefore,
 	); err != nil {
 		slog.ErrorContext(ctx, "Failed to send reminder email",
-			slog.Any("error", err),
+			logattr.Error(err),
 		)
 		return fmt.Errorf("failed to send reminder email: %v", err)
 	}
 
 	slog.InfoContext(ctx, "Reminder notification sent",
-		slog.Int("days_before", daysBefore),
+		logattr.DaysBefore(daysBefore),
 	)
 
 	// Store in Redis that the reminder was sent.
@@ -277,7 +278,7 @@ func (w *ReminderWorker) sendReminderNotification(ctx context.Context, subscript
 	err = w.redisClient.SetEx(ctx, key, "", 24*time.Hour).Err()
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to set reminder sent key in Redis",
-			slog.Any("error", err),
+			logattr.Error(err),
 		)
 	}
 

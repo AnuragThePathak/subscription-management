@@ -8,6 +8,7 @@ import (
 	"log/slog"
 
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/apperror"
+	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/go-playground/validator/v10"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -30,18 +31,18 @@ func (h *RequestHandler) readRequestBody(w http.ResponseWriter, r *http.Request,
 	}
 	if err := json.NewDecoder(r.Body).Decode(bodyObj); err != nil {
 		slog.WarnContext(r.Context(), "Failed to decode request body",
-			slog.String("method", r.Method),
-			slog.String("path", r.URL.Path),
-			slog.Any("error", err),
+			logattr.Method(r.Method),
+			logattr.Path(r.URL.Path),
+			logattr.Error(err),
 		)
 		WriteAPIResponse(w, http.StatusBadRequest, map[string]string{"error": "Invalid JSON"})
 		return false
 	}
 	if err := h.validate.Struct(bodyObj); err != nil {
 		slog.WarnContext(r.Context(), "Request validation failed",
-			slog.String("method", r.Method),
-			slog.String("path", r.URL.Path),
-			slog.Any("error", err),
+			logattr.Method(r.Method),
+			logattr.Path(r.URL.Path),
+			logattr.Error(err),
 		)
 		WriteAPIResponse(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return false
@@ -56,8 +57,8 @@ func (h *RequestHandler) ServeRequest(req InternalRequest) {
 	}
 	if req.SuccessCode == 0 {
 		slog.WarnContext(req.R.Context(), "SuccessCode not set, defaulting to 200",
-			slog.String("method", req.R.Method),
-			slog.String("path", req.R.URL.Path),
+			logattr.Method(req.R.Method),
+			logattr.Path(req.R.URL.Path),
 		)
 		req.SuccessCode = http.StatusOK
 	}
@@ -70,15 +71,15 @@ func (h *RequestHandler) ServeRequest(req InternalRequest) {
 			status := appErr.Status()
 
 			logAttrs := []any{
-				slog.String("method", req.R.Method),
-				slog.String("path", req.R.URL.Path),
-				slog.Int("status", status),
-				slog.String("error_code", string(appErr.Code())),
-				slog.String("message", appErr.Message()),
-				slog.Any("error", err),
+				logattr.Method(req.R.Method),
+				logattr.Path(req.R.URL.Path),
+				logattr.HTTPStatus(status),
+				logattr.ErrorCode(string(appErr.Code())),
+				logattr.Message(appErr.Message()),
+				logattr.Error(err),
 			}
-			for k, v := range appErr.Metadata() {
-				logAttrs = append(logAttrs, slog.Any(string(k), v))
+			for _, attr := range appErr.LogAttributes() {
+				logAttrs = append(logAttrs, attr)
 			}
 
 			if status >= 500 {
@@ -103,9 +104,9 @@ func (h *RequestHandler) ServeRequest(req InternalRequest) {
 			}
 
 			slog.ErrorContext(req.R.Context(), "Unhandled request error",
-				slog.String("method", req.R.Method),
-				slog.String("path", req.R.URL.Path),
-				slog.Any("error", err),
+				logattr.Method(req.R.Method),
+				logattr.Path(req.R.URL.Path),
+				logattr.Error(err),
 			)
 			WriteAPIResponse(req.W, http.StatusInternalServerError, nil)
 		}

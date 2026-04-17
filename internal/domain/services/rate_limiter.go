@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/go-redis/redis_rate/v10"
 )
 
@@ -34,10 +35,10 @@ func (r *redisRateLimiter) Allowed(ctx context.Context, ip string) (int, error) 
 	key := fmt.Sprintf("%s:%s", r.prefix, ip)
 	res, err := r.limiter.Allow(ctx, key, *r.limit)
 	if err != nil {
-		slog.ErrorContext(ctx, "Rate limiter error", slog.String("key", key), slog.Any("error", err))
+		slog.ErrorContext(ctx, "Rate limiter error", logattr.Key(key), logattr.Error(err))
 		return 0, err
 	}
 
-	slog.DebugContext(ctx, "Rate limiter check", slog.String("key", key), slog.Int("remaining", res.Remaining))
+	slog.DebugContext(ctx, "Rate limiter check", logattr.Key(key), logattr.Remaining(res.Remaining))
 	return res.Remaining, nil
 }

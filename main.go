@@ -16,6 +16,7 @@ import (
 	"github.com/anuragthepathak/subscription-management/internal/api/middlewares"
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/endpoint"
 	"github.com/anuragthepathak/subscription-management/internal/config"
+	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/anuragthepathak/subscription-management/internal/domain/repositories"
 	"github.com/anuragthepathak/subscription-management/internal/domain/services"
 	"github.com/anuragthepathak/subscription-management/internal/notifications"
@@ -37,20 +38,20 @@ func main() {
 	var cf *config.Config
 	{
 		if cf, err = config.LoadConfig(); err != nil {
-			slog.Error("Failed to load config", slog.Any("error", err))
+			slog.Error("Failed to load config", logattr.Error(err))
 			os.Exit(1)
 		}
 	}
 
 	// Configure the default slog logger.
 	if err = config.SetupLogger(cf.Env, cf.OTel.Enabled); err != nil {
-		slog.Error("Failed to configure logger", slog.Any("error", err))
+		slog.Error("Failed to configure logger", logattr.Error(err))
 		os.Exit(1)
 	}
 
 	slog.Info("Starting Subscription Management Service",
-		slog.String("environment", cf.Env),
-		slog.Int("port", cf.Server.Port),
+		logattr.Env(cf.Env),
+		logattr.Port(cf.Server.Port),
 	)
 
 	// Initialize OpenTelemetry (must be after logger, before DB/Redis so future phases can trace them).
@@ -58,7 +59,7 @@ func main() {
 	if cf.OTel.Enabled {
 		cf.OTel.Environment = cf.Env
 		if otelProvider, err = observability.InitOTel(ctx, cf.OTel); err != nil {
-			slog.Error("Failed to initialize OpenTelemetry", slog.Any("error", err))
+			slog.Error("Failed to initialize OpenTelemetry", logattr.Error(err))
 			os.Exit(1)
 		}
 	} else {
@@ -69,11 +70,11 @@ func main() {
 	var database *adapters.Database
 	{
 		if database, err = config.DatabaseConnection(cf.Database, cf.OTel.Enabled); err != nil {
-			slog.Error("Failed to initialize database client", slog.Any("error", err))
+			slog.Error("Failed to initialize database client", logattr.Error(err))
 			os.Exit(1)
 		}
 		if err = database.Ping(ctx); err != nil {
-			slog.Error("Failed to connect to database", slog.Any("error", err))
+			slog.Error("Failed to connect to database", logattr.Error(err))
 			os.Exit(1)
 		}
 	}
@@ -82,7 +83,7 @@ func main() {
 	{
 		redis = config.RedisConnection(cf.Redis, cf.OTel.Enabled)
 		if err = redis.Ping(ctx); err != nil {
-			slog.Error("Failed to connect to Redis", slog.Any("error", err))
+			slog.Error("Failed to connect to Redis", logattr.Error(err))
 			os.Exit(1)
 		}
 	}
@@ -94,15 +95,15 @@ func main() {
 	var billRepository repositories.BillRepository
 	{
 		if userRepository, err = repositories.NewUserRepository(ctx, database.DB); err != nil {
-			slog.Error("Failed to create user repository", slog.Any("error", err))
+			slog.Error("Failed to create user repository", logattr.Error(err))
 			os.Exit(1)
 		}
 		if subscriptionRepository, err = repositories.NewSubscriptionRepository(ctx, database.DB); err != nil {
-			slog.Error("Failed to create subscription repository", slog.Any("error", err))
+			slog.Error("Failed to create subscription repository", logattr.Error(err))
 			os.Exit(1)
 		}
 		if billRepository, err = repositories.NewBillRepository(ctx, database.DB); err != nil {
-			slog.Error("Failed to create bill repository", slog.Any("error", err))
+			slog.Error("Failed to create bill repository", logattr.Error(err))
 			os.Exit(1)
 		}
 	}
@@ -118,7 +119,7 @@ func main() {
 	if cf.OTel.Enabled {
 		metricsPort, err = observability.NewMetricsAdapter(cf.OTel)
 		if err != nil {
-			slog.Error("Failed to initialize business metrics adapter", slog.Any("error", err))
+			slog.Error("Failed to initialize business metrics adapter", logattr.Error(err))
 			os.Exit(1)
 		}
 	} else {
@@ -144,7 +145,7 @@ func main() {
 			)
 			go func() {
 				if startErr := sch.Start(ctx); startErr != nil && startErr != context.Canceled {
-					slog.Error("Scheduler failed", slog.Any("error", startErr))
+					slog.Error("Scheduler failed", logattr.Error(startErr))
 				}
 			}()
 
@@ -152,11 +153,11 @@ func main() {
 				Scheduler: sch,
 			}
 			slog.Info("Scheduler started",
-				slog.String("env", cf.Env),
-				slog.Duration("interval", cf.Scheduler.Interval),
+				logattr.Env(cf.Env),
+				logattr.Interval(cf.Scheduler.Interval),
 			)
 		} else {
-			slog.Info("Scheduler skipped", slog.String("env", cf.Env))
+			slog.Info("Scheduler skipped", logattr.Env(cf.Env))
 		}
 
 		if slices.Contains(cf.QueueWorker.EnabledForEnv, cf.Env) {
@@ -172,7 +173,7 @@ func main() {
 			)
 			go func() {
 				if startErr := worker.Start(); startErr != nil && startErr != context.Canceled {
-					slog.Error("Queue worker failed", slog.Any("error", startErr))
+					slog.Error("Queue worker failed", logattr.Error(startErr))
 				}
 			}()
 
@@ -180,11 +181,11 @@ func main() {
 				Worker: worker,
 			}
 			slog.Info("Queue worker started",
-				slog.String("env", cf.Env),
-				slog.Int("concurrency", cf.QueueWorker.Concurrency),
+				logattr.Env(cf.Env),
+				logattr.Concurrency(cf.QueueWorker.Concurrency),
 			)
 		} else {
-			slog.Info("Queue worker skipped", slog.String("env", cf.Env))
+			slog.Info("Queue worker skipped", logattr.Env(cf.Env))
 		}
 	}
 
@@ -259,7 +260,7 @@ func main() {
 		}
 	}
 
-	slog.Info("Service ready", slog.Duration("startup_time", time.Since(startupStart)))
+	slog.Info("Service ready", logattr.StartupTime(time.Since(startupStart)))
 
 	apiServer.StartWithGracefulShutdown(
 		ctx,

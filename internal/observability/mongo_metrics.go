@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"go.mongodb.org/mongo-driver/v2/event"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -26,7 +27,7 @@ func NewMongoMetricsMonitor() *event.CommandMonitor {
 		metric.WithUnit("s"),
 	)
 	if err != nil {
-		slog.Error("failed to create db.client.operation.duration histogram", slog.Any("error", err))
+		slog.Error("failed to create db.client.operation.duration histogram", logattr.Error(err))
 		return &event.CommandMonitor{}
 	}
 

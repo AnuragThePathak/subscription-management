@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/apperror"
+	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/anuragthepathak/subscription-management/internal/domain/repositories"
 	"github.com/anuragthepathak/subscription-management/internal/lib"
@@ -115,8 +116,8 @@ func (s *subscriptionService) CreateSubscription(ctx context.Context, subscripti
 	s.metrics.IncActiveSubscriptions(ctx)
 
 	slog.InfoContext(ctx, "Subscription created",
-		slog.String("subscription_id", res.ID.Hex()),
-		slog.String("name", subscription.Name),
+		logattr.SubscriptionID(res.ID.Hex()),
+		logattr.SubscriptionName(subscription.Name),
 	)
 	return res, nil
 }

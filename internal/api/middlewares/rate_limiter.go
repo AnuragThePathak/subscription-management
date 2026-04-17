@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/endpoint"
+	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/anuragthepathak/subscription-management/internal/domain/services"
 )
 
@@ -19,7 +20,7 @@ func RateLimiter(rateLimiterService services.RateLimiterService) func(http.Handl
 			ip, err := getClientIP(r)
 			if err != nil {
 				slog.WarnContext(r.Context(), "Failed to get client IP",
-					slog.Any("error", err),
+					logattr.Error(err),
 				)
 				endpoint.WriteAPIResponse(w, http.StatusInternalServerError, nil)
 				return
@@ -29,8 +30,8 @@ func RateLimiter(rateLimiterService services.RateLimiterService) func(http.Handl
 			remaining, err := rateLimiterService.Allowed(r.Context(), ip)
 			if err != nil {
 				slog.ErrorContext(r.Context(), "Rate limiter service error",
-					slog.String("ip", ip),
-					slog.Any("error", err),
+					logattr.IP(ip),
+					logattr.Error(err),
 				)
 				endpoint.WriteAPIResponse(w, http.StatusInternalServerError, nil)
 				return
@@ -44,8 +45,8 @@ func RateLimiter(rateLimiterService services.RateLimiterService) func(http.Handl
 				w.Header().Set("Retry-After", "60") // Suggest retry after 60 seconds.
 
 				slog.WarnContext(r.Context(), "Rate limit exceeded",
-					slog.String("ip", ip),
-					slog.Int("remaining", remaining),
+					logattr.IP(ip),
+					logattr.Remaining(remaining),
 				)
 
 				endpoint.WriteAPIResponse(w, http.StatusTooManyRequests, map[string]string{

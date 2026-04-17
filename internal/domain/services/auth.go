@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/apperror"
+	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"golang.org/x/crypto/bcrypt"
@@ -36,7 +37,7 @@ func (s *authService) Login(ctx context.Context, loginReq models.LoginRequest) (
 	user, err := s.userServiceInternal.FetchUserByEmailInternal(ctx, loginReq.Email)
 	if err != nil {
 		if appErr, ok := errors.AsType[apperror.AppError](err); ok {
-			return nil, appErr.WithMetadata(apperror.KeyAttemptedID, loginReq.Email)
+			return nil, appErr.WithLogAttributes(logattr.AttemptedID(loginReq.Email))
 		} else {
 			return nil, err
 		}
@@ -45,17 +46,17 @@ func (s *authService) Login(ctx context.Context, loginReq models.LoginRequest) (
 	// Verify password.
 	if err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(loginReq.Password)); err != nil {
 		return nil, apperror.NewUnauthorizedError("Invalid credentials").
-			WithMetadata(apperror.KeyAttemptedID, loginReq.Email)
+			WithLogAttributes(logattr.AttemptedID(loginReq.Email))
 	}
 
 	// Generate tokens.
 	tokens, err := s.jwtService.GenerateTokens(user.ID.Hex(), user.Email)
 	if err != nil {
 		return nil, apperror.NewInternalError(err).
-			WithMetadata(apperror.KeyUserID, user.ID.Hex())
+			WithLogAttributes(logattr.UserID(user.ID.Hex()))
 	}
 
-	slog.InfoContext(ctx, "Login successful", slog.String("user_id", user.ID.Hex()))
+	slog.InfoContext(ctx, "Login successful", logattr.UserID(user.ID.Hex()))
 	return tokens, nil
 }
 
@@ -76,7 +77,7 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 	user, err := s.userServiceInternal.FetchUserByIDInternal(ctx, userID)
 	if err != nil {
 		if appErr, ok := errors.AsType[apperror.AppError](err); ok {
-			return nil, appErr.WithMetadata(apperror.KeyUserID, claims.UserID)
+			return nil, appErr.WithLogAttributes(logattr.UserID(claims.UserID))
 		} else {
 			return nil, err
 		}
@@ -86,9 +87,9 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 	tokens, err := s.jwtService.GenerateTokens(user.ID.Hex(), user.Email)
 	if err != nil {
 		return nil, apperror.NewInternalError(err).
-			WithMetadata(apperror.KeyUserID, user.ID.Hex())
+			WithLogAttributes(logattr.UserID(user.ID.Hex()))
 	}
 
-	slog.DebugContext(ctx, "Token refreshed", slog.String("user_id", user.ID.Hex()))
+	slog.DebugContext(ctx, "Token refreshed", logattr.UserID(user.ID.Hex()))
 	return tokens, nil
 }

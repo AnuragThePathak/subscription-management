@@ -7,7 +7,7 @@ import (
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/endpoint"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/anuragthepathak/subscription-management/internal/domain/services"
-	"github.com/anuragthepathak/subscription-management/internal/lib"
+	"github.com/anuragthepathak/subscription-management/internal/core/appctx"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -39,7 +39,7 @@ func NewSubscriptionController(subscriptionService services.SubscriptionServiceE
 
 func (c *subscriptionController) createSubscription(w http.ResponseWriter, r *http.Request) {
 	subscription := models.SubscriptionRequest{}
-	userID, _ := lib.GetUserID(r.Context())
+	userID, _ := appctx.GetUserID(r.Context())
 
 	c.requestHandler.ServeRequest(endpoint.InternalRequest{
 		W:          w,
@@ -64,8 +64,8 @@ func (c *subscriptionController) getAllSubscriptions(w http.ResponseWriter, r *h
 }
 
 func (c *subscriptionController) getSubscriptionByID(w http.ResponseWriter, r *http.Request) {
-	subscriptionID, _ := lib.GetSubscriptionID(r.Context())
-	userID, _ := lib.GetUserID(r.Context())
+	subscriptionID, _ := appctx.GetSubscriptionID(r.Context())
+	userID, _ := appctx.GetUserID(r.Context())
 
 	c.requestHandler.ServeRequest(endpoint.InternalRequest{
 		W: w,
@@ -78,8 +78,8 @@ func (c *subscriptionController) getSubscriptionByID(w http.ResponseWriter, r *h
 }
 
 func (c *subscriptionController) deleteSubscription(w http.ResponseWriter, r *http.Request) {
-	subscriptionID, _ := lib.GetSubscriptionID(r.Context())
-	userID, _ := lib.GetUserID(r.Context())
+	subscriptionID, _ := appctx.GetSubscriptionID(r.Context())
+	userID, _ := appctx.GetUserID(r.Context())
 
 	c.requestHandler.ServeRequest(endpoint.InternalRequest{
 		W: w,
@@ -93,7 +93,7 @@ func (c *subscriptionController) deleteSubscription(w http.ResponseWriter, r *ht
 
 func (c *subscriptionController) getSubscriptionsByUserID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	userID, _ := lib.GetUserID(r.Context())
+	userID, _ := appctx.GetUserID(r.Context())
 
 	c.requestHandler.ServeRequest(endpoint.InternalRequest{
 		W: w,
@@ -106,8 +106,8 @@ func (c *subscriptionController) getSubscriptionsByUserID(w http.ResponseWriter,
 }
 
 func (c *subscriptionController) cancelSubscription(w http.ResponseWriter, r *http.Request) {
-	subscriptionID, _ := lib.GetSubscriptionID(r.Context())
-	userID, _ := lib.GetUserID(r.Context())
+	subscriptionID, _ := appctx.GetSubscriptionID(r.Context())
+	userID, _ := appctx.GetUserID(r.Context())
 
 	c.requestHandler.ServeRequest(endpoint.InternalRequest{
 		W: w,

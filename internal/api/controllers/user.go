@@ -6,7 +6,7 @@ import (
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/endpoint"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/anuragthepathak/subscription-management/internal/domain/services"
-	"github.com/anuragthepathak/subscription-management/internal/lib"
+	"github.com/anuragthepathak/subscription-management/internal/core/appctx"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -39,7 +39,7 @@ func (c *userController) getAllUsers(w http.ResponseWriter, r *http.Request) {
 
 func (c *userController) getUserByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	claimedUserID, _ := lib.GetUserID(r.Context())
+	claimedUserID, _ := appctx.GetUserID(r.Context())
 
 	c.requestHandler.ServeRequest(endpoint.InternalRequest{
 		W: w,
@@ -53,7 +53,7 @@ func (c *userController) getUserByID(w http.ResponseWriter, r *http.Request) {
 
 func (c *userController) updateUser(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	claimedUserID, _ := lib.GetUserID(r.Context())
+	claimedUserID, _ := appctx.GetUserID(r.Context())
 	updateReq := models.UserUpdateRequest{}
 
 	c.requestHandler.ServeRequest(endpoint.InternalRequest{
@@ -69,7 +69,7 @@ func (c *userController) updateUser(w http.ResponseWriter, r *http.Request) {
 
 func (c *userController) deleteUser(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	claimedUserID, _ := lib.GetUserID(r.Context())
+	claimedUserID, _ := appctx.GetUserID(r.Context())
 
 	c.requestHandler.ServeRequest(endpoint.InternalRequest{
 		W: w,

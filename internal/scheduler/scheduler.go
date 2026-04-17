@@ -157,7 +157,7 @@ func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
 
 // handleReminderTasks checks for subscriptions needing reminders and schedules tasks.
 func (s *SubscriptionScheduler) handleReminderTasks(ctx context.Context) error {
-	ctx = context.WithValue(ctx, lib.TaskTypeKey, ReminderTask)
+	ctx = lib.WithTaskType(ctx, ReminderTask)
 	ctx, span := s.tracer.Start(ctx, "Phase: Reminder Tasks",
 		trace.WithAttributes(
 			observability.TaskType(ReminderTask),
@@ -217,7 +217,7 @@ func (s *SubscriptionScheduler) handleReminderTasks(ctx context.Context) error {
 
 // handleRenewalTasks checks for subscriptions needing automatic renewal and schedules tasks.
 func (s *SubscriptionScheduler) handleRenewalTasks(ctx context.Context) error {
-	ctx = context.WithValue(ctx, lib.TaskTypeKey, RenewalTask)
+	ctx = lib.WithTaskType(ctx, RenewalTask)
 	ctx, span := s.tracer.Start(ctx, "Phase: Renewal Tasks",
 		trace.WithAttributes(
 			observability.TaskType(RenewalTask),
@@ -261,7 +261,7 @@ func (s *SubscriptionScheduler) handleRenewalTasks(ctx context.Context) error {
 
 // handleExpirationTasks checks for subscriptions that are expired and schedules tasks.
 func (s *SubscriptionScheduler) handleExpirationTasks(ctx context.Context) error {
-	ctx = context.WithValue(ctx, lib.TaskTypeKey, ExpirationTask)
+	ctx = lib.WithTaskType(ctx, ExpirationTask)
 	ctx, span := s.tracer.Start(ctx, "Phase: Expiration Tasks",
 		trace.WithAttributes(
 			observability.TaskType(ExpirationTask),

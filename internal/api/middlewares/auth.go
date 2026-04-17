@@ -1,7 +1,6 @@
 package middlewares
 
 import (
-	"context"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -39,8 +38,8 @@ func Authentication(jwtService services.JWTService) func(next http.Handler) http
 			}
 
 			// Add user claims to context.
-			ctx := context.WithValue(r.Context(), lib.UserIDKey, claims.UserID)
-			ctx = context.WithValue(ctx, lib.UserEmailKey, claims.Email)
+			ctx := lib.WithUserID(r.Context(), claims.UserID)
+			ctx = lib.WithUserEmail(ctx, claims.Email)
 
 			// Add user ID to the span if available
 			span := trace.SpanFromContext(ctx)

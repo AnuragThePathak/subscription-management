@@ -12,8 +12,8 @@ import (
 // and injects them into the Go context so the custom slog handler can automatically log them.
 func EnrichContext(ctx context.Context, userID, subscriptionID string) context.Context {
 	// Inject into the Go context for slog
-	ctx = context.WithValue(ctx, lib.UserIDKey, userID)
-	ctx = context.WithValue(ctx, lib.SubscriptionIDKey, subscriptionID)
+	ctx = lib.WithUserID(ctx, userID)
+	ctx = lib.WithSubscriptionID(ctx, subscriptionID)
 
 	return ctx
 }

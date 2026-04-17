@@ -1,7 +1,6 @@
 package middlewares
 
 import (
-	"context"
 	"net/http"
 
 	"github.com/anuragthepathak/subscription-management/internal/lib"
@@ -22,7 +21,7 @@ func WithSubscriptionID(next http.Handler) http.Handler {
 		}
 
 		// Inject into context
-		ctx := context.WithValue(r.Context(), lib.SubscriptionIDKey, subscriptionID)
+		ctx := lib.WithSubscriptionID(r.Context(), subscriptionID)
 
 		// Update OpenTelemetry span
 		span := trace.SpanFromContext(ctx)

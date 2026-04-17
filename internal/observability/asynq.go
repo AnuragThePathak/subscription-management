@@ -55,7 +55,7 @@ func AsynqTracingMiddleware(serviceName string) asynq.MiddlewareFunc {
 			}
 
 			// Inject Task type for logs
-			ctx = context.WithValue(ctx, lib.TaskTypeKey, task.Type())
+			ctx = lib.WithTaskType(ctx, task.Type())
 
 			// Execute actual task handler
 			err := next.ProcessTask(ctx, task)

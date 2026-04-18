@@ -62,6 +62,7 @@ type SubscriptionScheduler struct {
 	client              *asynq.Client
 	interval            time.Duration
 	reminderDays        []int
+	startupDelay        time.Duration
 	queueName           string
 	tracer              trace.Tracer
 }
@@ -73,6 +74,7 @@ func NewSubscriptionScheduler(
 	redisConfig *asynq.RedisClientOpt,
 	interval time.Duration,
 	reminderDays []int,
+	startupDelay time.Duration,
 	queueName string,
 	name string,
 ) *SubscriptionScheduler {
@@ -83,6 +85,7 @@ func NewSubscriptionScheduler(
 		client:              client,
 		interval:            interval,
 		reminderDays:        reminderDays,
+		startupDelay:        startupDelay,
 		queueName:           queueName,
 		tracer:              otel.Tracer(name),
 	}
@@ -90,15 +93,18 @@ func NewSubscriptionScheduler(
 
 // Start begins the scheduler loop.
 func (s *SubscriptionScheduler) Start(ctx context.Context) error {
+	delayTimer := time.NewTimer(s.startupDelay)
+	select {
+	case <-ctx.Done():
+		delayTimer.Stop() // Clean up the timer to prevent memory leaks
+		return ctx.Err()
+	case <-delayTimer.C:
+		_ = s.pollSubscriptions(ctx)
+	}
+	delayTimer.Stop()
+
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
-
-	// Run once immediately.
-	if err := s.pollSubscriptions(ctx); err != nil {
-		slog.Warn("Initial subscription poll failed (will retry on next tick)",
-			slog.Any("error", err),
-		)
-	}
 
 	for {
 		select {
@@ -115,12 +121,7 @@ func (s *SubscriptionScheduler) Start(ctx context.Context) error {
 // pollSubscriptions checks for subscriptions needing reminders and renewals, then schedules tasks.
 func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
 	// Start a trace span for this entire scheduler tick execution
-	ctx, span := s.tracer.Start(ctx, "Scheduler Tick: Poll Subscriptions",
-		trace.WithAttributes(
-			traceattr.SchedulerInterval(s.interval.String()),
-			traceattr.SchedulerReminderDays(s.reminderDays),
-		),
-	)
+	ctx, span := s.tracer.Start(ctx, "Scheduler Tick: Poll Subscriptions")
 	defer span.End()
 
 	slog.InfoContext(ctx, "Polling subscriptions")
@@ -155,6 +156,11 @@ func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
 	if finalErr != nil {
 		span.RecordError(finalErr)
 		span.SetStatus(codes.Error, finalErr.Error())
+
+		slog.ErrorContext(ctx, "Poll subscriptions completed with partial failures",
+			slog.Int("failure_count", len(errs)),
+			logattr.Error(finalErr),
+		)
 	}
 	return finalErr
 }

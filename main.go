@@ -141,6 +141,7 @@ func main() {
 				config.QueueRedisConfig(cf.Redis),
 				cf.Scheduler.Interval,
 				cf.Scheduler.ReminderDays,
+				cf.Scheduler.StartupDelay,
 				cf.QueueWorker.QueueName,
 				cf.Scheduler.Name,
 			)

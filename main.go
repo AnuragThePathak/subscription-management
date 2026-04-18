@@ -141,6 +141,7 @@ func main() {
 				config.QueueRedisConfig(cf.Redis),
 				cf.Scheduler.Interval,
 				cf.Scheduler.ReminderDays,
+				cf.QueueWorker.QueueName,
 				cf.Scheduler.Name,
 			)
 			go func() {
@@ -161,7 +162,7 @@ func main() {
 		}
 
 		if slices.Contains(cf.QueueWorker.EnabledForEnv, cf.Env) {
-			worker := scheduler.NewReminderWorker(
+			worker := scheduler.NewQueueWorker(
 				subscriptionService,
 				userService,
 				notifications.NewEmailSender(cf.Email),

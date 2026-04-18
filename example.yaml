@@ -37,7 +37,7 @@ scheduler:
 queue_worker:
   name: "subscription-worker"
   concurrency: 2 # Number of concurrent workers for processing tasks
-  queue_name: "reminder" # Name of the queue to process tasks from
+  queue_name: "subscription" # Name of the queue to process tasks from
   enabled_for_env: ["development", "staging", "production"] # Environments where the worker is enabled
 
 email:

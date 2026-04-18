@@ -19,8 +19,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// ReminderWorker handles processing of reminder tasks.
-type ReminderWorker struct {
+// QueueWorker handles processing of background tasks from various queues.
+type QueueWorker struct {
 	subscriptionService services.SubscriptionServiceInternal
 	userService         services.UserServiceInternal
 	emailSender         *notifications.EmailSender
@@ -29,8 +29,8 @@ type ReminderWorker struct {
 	name                string
 }
 
-// NewReminderWorker creates a new reminder worker.
-func NewReminderWorker(
+// NewQueueWorker creates a new queue worker.
+func NewQueueWorker(
 	subscriptionService services.SubscriptionServiceInternal,
 	userService services.UserServiceInternal,
 	emailSender *notifications.EmailSender,
@@ -39,7 +39,7 @@ func NewReminderWorker(
 	concurrency int,
 	queueName string,
 	name string,
-) *ReminderWorker {
+) *QueueWorker {
 	// Configure the server with appropriate concurrency.
 	server := asynq.NewServer(
 		redisConfig,
@@ -52,7 +52,7 @@ func NewReminderWorker(
 		},
 	)
 
-	return &ReminderWorker{
+	return &QueueWorker{
 		subscriptionService,
 		userService,
 		emailSender,
@@ -63,7 +63,7 @@ func NewReminderWorker(
 }
 
 // Start begins processing tasks from the queue.
-func (w *ReminderWorker) Start() error {
+func (w *QueueWorker) Start() error {
 	// Register task handlers.
 	mux := asynq.NewServeMux()
 
@@ -78,7 +78,7 @@ func (w *ReminderWorker) Start() error {
 }
 
 // handleSubscriptionReminder processes a subscription reminder task.
-func (w *ReminderWorker) handleSubscriptionReminder(ctx context.Context, task *asynq.Task) error {
+func (w *QueueWorker) handleSubscriptionReminder(ctx context.Context, task *asynq.Task) error {
 	var payload ReminderPayload
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
 		return fmt.Errorf("failed to unmarshal task payload: %v", err)
@@ -121,7 +121,7 @@ func (w *ReminderWorker) handleSubscriptionReminder(ctx context.Context, task *a
 }
 
 // handleSubscriptionRenewal processes an automatic subscription renewal task.
-func (w *ReminderWorker) handleSubscriptionRenewal(ctx context.Context, task *asynq.Task) error {
+func (w *QueueWorker) handleSubscriptionRenewal(ctx context.Context, task *asynq.Task) error {
 	var payload RenewalPayload
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
 		return fmt.Errorf("failed to unmarshal renewal task payload: %v", err)
@@ -197,7 +197,7 @@ func (w *ReminderWorker) handleSubscriptionRenewal(ctx context.Context, task *as
 	return nil
 }
 
-func (w *ReminderWorker) handleSubscriptionExpiration(ctx context.Context, task *asynq.Task) error {
+func (w *QueueWorker) handleSubscriptionExpiration(ctx context.Context, task *asynq.Task) error {
 	var payload ExpirationPayload
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
 		return fmt.Errorf("failed to unmarshal expiration task payload: %v", err)
@@ -248,7 +248,7 @@ func (w *ReminderWorker) handleSubscriptionExpiration(ctx context.Context, task 
 }
 
 // sendReminderNotification handles sending the actual reminder notification.
-func (w *ReminderWorker) sendReminderNotification(ctx context.Context, subscription *models.Subscription, daysBefore int) error {
+func (w *QueueWorker) sendReminderNotification(ctx context.Context, subscription *models.Subscription, daysBefore int) error {
 	// Get the user information.
 	user, err := w.userService.FetchUserByIDInternal(ctx, subscription.UserID)
 	if err != nil {
@@ -286,6 +286,6 @@ func (w *ReminderWorker) sendReminderNotification(ctx context.Context, subscript
 }
 
 // Stop gracefully shuts down the worker.
-func (w *ReminderWorker) Stop() {
+func (w *QueueWorker) Stop() {
 	w.server.Shutdown()
 }

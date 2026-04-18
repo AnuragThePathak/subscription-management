@@ -62,6 +62,7 @@ type SubscriptionScheduler struct {
 	client              *asynq.Client
 	interval            time.Duration
 	reminderDays        []int
+	queueName           string
 	tracer              trace.Tracer
 }
 
@@ -72,6 +73,7 @@ func NewSubscriptionScheduler(
 	redisConfig *asynq.RedisClientOpt,
 	interval time.Duration,
 	reminderDays []int,
+	queueName string,
 	name string,
 ) *SubscriptionScheduler {
 	client := asynq.NewClient(redisConfig)
@@ -81,6 +83,7 @@ func NewSubscriptionScheduler(
 		client:              client,
 		interval:            interval,
 		reminderDays:        reminderDays,
+		queueName:           queueName,
 		tracer:              otel.Tracer(name),
 	}
 }
@@ -360,6 +363,7 @@ func (s *SubscriptionScheduler) scheduleReminderTask(ctx context.Context, subscr
 		asynq.Retention(24*time.Hour), // Keep task for 24h after processing.
 		asynq.Timeout(45*time.Second), // Handler must finish in 45s.
 		asynq.MaxRetry(3),             // Retry up to 3 times if failed.
+		asynq.Queue(s.queueName),
 	)
 	if err != nil {
 		span.RecordError(err)
@@ -371,6 +375,7 @@ func (s *SubscriptionScheduler) scheduleReminderTask(ctx context.Context, subscr
 	slog.DebugContext(ctx, "Reminder task enqueued",
 		logattr.TaskID(info.ID),
 		slog.Int("days_before", daysBefore),
+		slog.String("queue", s.queueName),
 	)
 
 	return nil
@@ -416,6 +421,7 @@ func (s *SubscriptionScheduler) scheduleRenewalTask(ctx context.Context, subscri
 		asynq.Timeout(45*time.Second), // Handler must finish in 45s.
 		asynq.MaxRetry(5),             // Retry up to 5 times if failed.
 		asynq.ProcessAt(processAt),
+		asynq.Queue(s.queueName),
 	)
 	if err != nil {
 		span.RecordError(err)
@@ -427,6 +433,7 @@ func (s *SubscriptionScheduler) scheduleRenewalTask(ctx context.Context, subscri
 	slog.DebugContext(ctx, "Renewal task enqueued",
 		logattr.TaskID(info.ID),
 		logattr.ProcessAt(processAt),
+		slog.String("queue", s.queueName),
 	)
 
 	return nil
@@ -464,6 +471,7 @@ func (s *SubscriptionScheduler) scheduleExpirationTask(ctx context.Context, subs
 		asynq.Retention(24*time.Hour), // Keep task for 24h after processing
 		asynq.Timeout(30*time.Second), // Handler must finish in 30s
 		asynq.MaxRetry(3),             // Retry up to 3 times if failed
+		asynq.Queue(s.queueName),
 	)
 	if err != nil {
 		span.RecordError(err)

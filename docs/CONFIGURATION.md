@@ -41,7 +41,9 @@ scheduler:
   reminder_days: [1, 3, 7]
 
 queue_worker:
+  name: "subscription-worker"
   concurrency: 2
+  queue_name: "subscription"
 
 email:
   smtp_host: "smtp.gmail.com"
@@ -81,6 +83,7 @@ The service will not start without these:
 - **JWT secrets**: Use different values for access and refresh tokens
 - **Gmail SMTP**: Requires an App Password, not your regular password
 - **Rate limiter**: `rate: 1, burst: 5, period: "2s"` = 1 req/2s average, bursts up to 5
+- **Scheduler and Worker**: The scheduler enqueues tasks to the Redis queue (`subscriptions` by default) which are then processed by the queue worker.
 - **Scheduler interval**: How often to check for renewals/reminders (Go duration format: `"12h"`, `"30m"`)
 
 ## Observability & Health Checks

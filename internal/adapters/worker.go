@@ -7,9 +7,9 @@ import (
 	"github.com/anuragthepathak/subscription-management/internal/scheduler"
 )
 
-// SchedulerWorker wraps the ReminderWorker to provide graceful shutdown capabilities.
+// SchedulerWorker wraps the QueueWorker to provide graceful shutdown capabilities.
 type SchedulerWorker struct {
-	Worker *scheduler.ReminderWorker
+	Worker *scheduler.QueueWorker
 }
 
 // Shutdown gracefully shuts down the worker, respecting the provided context.

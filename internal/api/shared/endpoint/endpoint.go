@@ -35,7 +35,11 @@ func (h *RequestHandler) readRequestBody(w http.ResponseWriter, r *http.Request,
 			logattr.Path(r.URL.Path),
 			logattr.Error(err),
 		)
-		WriteAPIResponse(w, http.StatusBadRequest, map[string]string{"error": "Invalid JSON"})
+		WriteAPIResponse(
+			w,
+			http.StatusBadRequest,
+			map[string]string{"error": "Invalid JSON"},
+		)
 		return false
 	}
 	if err := h.validate.Struct(bodyObj); err != nil {
@@ -44,7 +48,11 @@ func (h *RequestHandler) readRequestBody(w http.ResponseWriter, r *http.Request,
 			logattr.Path(r.URL.Path),
 			logattr.Error(err),
 		)
-		WriteAPIResponse(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		WriteAPIResponse(
+			w,
+			http.StatusBadRequest,
+			map[string]string{"error": err.Error()},
+		)
 		return false
 	}
 	return true
@@ -96,11 +104,15 @@ func (h *RequestHandler) ServeRequest(req InternalRequest) {
 					logAttrs...,
 				)
 			}
-			WriteAPIResponse(req.W, status, map[string]string{"error": appErr.Message()})
+			WriteAPIResponse(
+				req.W,
+				status,
+				map[string]string{"error": appErr.Message()},
+			)
 		} else {
 			if span.IsRecording() {
 				span.RecordError(err)
-				span.SetStatus(codes.Error, err.Error())
+				span.SetStatus(codes.Error, "Unhandled error")
 			}
 
 			slog.ErrorContext(req.R.Context(), "Unhandled request error",
@@ -108,7 +120,13 @@ func (h *RequestHandler) ServeRequest(req InternalRequest) {
 				logattr.Path(req.R.URL.Path),
 				logattr.Error(err),
 			)
-			WriteAPIResponse(req.W, http.StatusInternalServerError, nil)
+			WriteAPIResponse(
+				req.W,
+				http.StatusInternalServerError,
+				map[string]string{
+					"error": "An unexpected internal error occurred.",
+				},
+			)
 		}
 		return
 	}

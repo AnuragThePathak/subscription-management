@@ -10,6 +10,8 @@ import (
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/endpoint"
 	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/anuragthepathak/subscription-management/internal/domain/services"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // RateLimiter returns a middleware that limits requests by IP address.
@@ -22,13 +24,22 @@ func RateLimiter(rateLimiterService services.RateLimiterService) func(http.Handl
 				slog.WarnContext(r.Context(), "Failed to get client IP",
 					logattr.Error(err),
 				)
-				endpoint.WriteAPIResponse(w, http.StatusInternalServerError, nil)
+				endpoint.WriteAPIResponse(w, http.StatusBadRequest,
+					map[string]string{
+						"error": "Malformed request environment",
+					},
+				)
 				return
 			}
 
 			// Check if the request is allowed.
 			remaining, err := rateLimiterService.Allowed(r.Context(), ip)
 			if err != nil {
+				if span := trace.SpanFromContext(r.Context()); span.IsRecording() {
+					span.RecordError(err)
+					span.SetStatus(codes.Error, "Rate limiter service error")
+				}
+
 				slog.ErrorContext(r.Context(), "Rate limiter service error",
 					logattr.IP(ip),
 					logattr.Error(err),

@@ -15,7 +15,6 @@ const (
 	schedulerReminderDaysKey = attribute.Key("scheduler.reminder_days")
 	taskTypeKey              = attribute.Key("scheduler.task_type")
 	processAtKey             = attribute.Key("scheduler.process_at")
-	tasksScheduledKey        = attribute.Key("scheduler.tasks_scheduled")
 )
 
 // SubscriptionID returns an attribute.KeyValue for the subscription ID.
@@ -56,9 +55,4 @@ func TaskType(t string) attribute.KeyValue {
 // ProcessAt returns an attribute.KeyValue for the scheduler process at time.
 func ProcessAt(t time.Time) attribute.KeyValue {
 	return processAtKey.String(t.Format(time.RFC3339))
-}
-
-// TasksScheduled returns an attribute.KeyValue for the number of tasks scheduled.
-func TasksScheduled(count int) attribute.KeyValue {
-	return tasksScheduledKey.Int(count)
 }

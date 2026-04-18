@@ -35,12 +35,16 @@ const (
 	keyIP             = "ip"
 	keyMessage        = "message"
 	keyDaysBefore     = "days_before"
-	keyCount          = "count"
+	keyTotal          = "total"
+	keySuccess        = "success"
+	keyFailed         = "failed"
 	keyHost           = "host"
 	keyDatabase       = "database"
 	keyRate           = "rate"
 	keyBurst          = "burst"
 	keyPeriod         = "period"
+	keyQueue          = "queue"
+	keyRenewalDate    = "renewal_date"
 )
 
 // UserID returns an slog.Attr for the user ID.
@@ -188,9 +192,19 @@ func DaysBefore(d int) slog.Attr {
 	return slog.Int(keyDaysBefore, d)
 }
 
-// Count returns an slog.Attr for the count of items.
-func Count(c int) slog.Attr {
-	return slog.Int(keyCount, c)
+// Total returns an slog.Attr for the total count of items.
+func Total(c int) slog.Attr {
+	return slog.Int(keyTotal, c)
+}
+
+// Success returns an slog.Attr for the count of items.
+func Success(c int) slog.Attr {
+	return slog.Int(keySuccess, c)
+}
+
+// Failed returns an slog.Attr for the count of items.
+func Failed(c int) slog.Attr {
+	return slog.Int(keyFailed, c)
 }
 
 // Host returns an slog.Attr for the host name.
@@ -216,4 +230,14 @@ func Burst(b int) slog.Attr {
 // Period returns an slog.Attr for the duration period.
 func Period(p time.Duration) slog.Attr {
 	return slog.Duration(keyPeriod, p)
+}
+
+// Queue returns an slog.Attr for the queue name.
+func Queue(q string) slog.Attr {
+	return slog.String(keyQueue, q)
+}
+
+// RenewalDate returns an slog.Attr for the renewal date.
+func RenewalDate(t time.Time) slog.Attr {
+	return slog.Time(keyRenewalDate, t)
 }

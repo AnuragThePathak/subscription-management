@@ -29,7 +29,8 @@ const (
 	RenewalTask = "subscription:renewal"
 	// ExpirationTask is the task name for subscription expiration.
 	ExpirationTask = "subscription:expiration"
-	// RenewalHoursBeforeDay is how many hours before the renewal date to process renewals
+	// RenewalHoursBeforeDay is how many hours before the renewal date to process
+	// renewals
 	RenewalHoursBeforeDay = 8
 )
 
@@ -67,7 +68,8 @@ type SubscriptionScheduler struct {
 	tracer              trace.Tracer
 }
 
-// NewSubscriptionScheduler creates a new subscription scheduler.
+// NewSubscriptionScheduler creates and initializes a new SubscriptionScheduler
+// with the provided dependencies and configuration.
 func NewSubscriptionScheduler(
 	subscriptionService services.SubscriptionServiceInternal,
 	redisClient *redis.Client,
@@ -99,7 +101,7 @@ func (s *SubscriptionScheduler) Start(ctx context.Context) error {
 		delayTimer.Stop() // Clean up the timer to prevent memory leaks
 		return ctx.Err()
 	case <-delayTimer.C:
-		_ = s.pollSubscriptions(ctx)
+		s.pollSubscriptions(ctx)
 	}
 	delayTimer.Stop()
 
@@ -111,15 +113,14 @@ func (s *SubscriptionScheduler) Start(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			if err := s.pollSubscriptions(ctx); err != nil {
-				slog.Error("Failed to fetch active subscriptions", logattr.Error(err))
-			}
+			s.pollSubscriptions(ctx)
 		}
 	}
 }
 
-// pollSubscriptions checks for subscriptions needing reminders and renewals, then schedules tasks.
-func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
+// pollSubscriptions checks for subscriptions needing reminders, renewals, or
+// expirations, and schedules their respective tasks.
+func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) {
 	// Start a trace span for this entire scheduler tick execution
 	ctx, span := s.tracer.Start(ctx, "Scheduler Tick: Poll Subscriptions")
 	defer span.End()
@@ -146,26 +147,23 @@ func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) error {
 
 	// Handle expiration tasks
 	if err := s.handleExpirationTasks(ctx); err != nil {
-		slog.ErrorContext(ctx, "Expiration tasks failed",
-			logattr.Error(err),
-		)
 		errs = append(errs, err)
 	}
 
 	finalErr := errors.Join(errs...)
 	if finalErr != nil {
 		span.RecordError(finalErr)
-		span.SetStatus(codes.Error, finalErr.Error())
+		span.SetStatus(codes.Error, "Poll subscriptions completed with partial failures")
 
 		slog.ErrorContext(ctx, "Poll subscriptions completed with partial failures",
-			slog.Int("failure_count", len(errs)),
+			logattr.Failed(len(errs)),
 			logattr.Error(finalErr),
 		)
 	}
-	return finalErr
 }
 
-// handleReminderTasks checks for subscriptions needing reminders and schedules tasks.
+// handleReminderTasks checks for subscriptions needing reminders and schedules
+// tasks.
 func (s *SubscriptionScheduler) handleReminderTasks(ctx context.Context) error {
 	ctx = appctx.WithTaskType(ctx, ReminderTask)
 	ctx, span := s.tracer.Start(ctx, "Phase: Reminder Tasks",
@@ -179,134 +177,45 @@ func (s *SubscriptionScheduler) handleReminderTasks(ctx context.Context) error {
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
+
+		slog.ErrorContext(ctx, "Failed to get subscriptions due for reminder",
+			logattr.Error(err),
+		)
 		return err
 	}
 
 	scheduled := 0
+	failed := 0
 	// Check each subscription for upcoming renewal dates.
 	for _, subscription := range activeSubscriptions {
-		sCtx := observability.EnrichContext(
-			ctx, subscription.UserID.Hex(),
-			subscription.ID.Hex(),
-		)
-
-		daysBefore := lib.DaysBetween(time.Now(), subscription.ValidTill, nil)
-		redisKey := fmt.Sprintf("reminder_sent:%s:%d", subscription.ID.Hex(), daysBefore)
-		exists, err := s.redisClient.Exists(sCtx, redisKey).Result()
-		if err != nil {
-			span.RecordError(err)
-			slog.ErrorContext(sCtx, "Failed to check Redis for sent reminder",
-				logattr.DaysBefore(daysBefore),
-				logattr.Error(err),
-			)
-			continue
-		}
-
-		if exists == 0 { // Key does not exist, reminder not sent recently.
-			if err := s.scheduleReminderTask(sCtx, subscription, daysBefore); err != nil {
-				span.RecordError(err)
-				slog.ErrorContext(sCtx, "Failed to schedule reminder task",
-					logattr.SubscriptionID(subscription.ID.Hex()),
-					logattr.DaysBefore(daysBefore),
-					logattr.Error(err),
-				)
-			} else {
-				scheduled++
-			}
+		if enqued, err := s.processReminderTask(ctx, subscription); err != nil {
+			failed++
+		} else if enqued {
+			scheduled++
 		}
 	}
 
-	span.SetAttributes(traceattr.TasksScheduled(scheduled))
+	total := scheduled + failed
+	if total > 0 && failed == total {
+		err := errors.New("100% task enqueue failure rate detected")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Catastrophic enqueue failure")
+
+		slog.ErrorContext(ctx, "All reminder tasks failed to enqueue",
+			logattr.Total(total),
+			logattr.Queue(s.queueName),
+			logattr.Error(err),
+		)
+		// Return to pollSubscriptions so the roll-up log knows the Phase died
+		return err
+	}
+
 	if scheduled > 0 {
 		slog.InfoContext(ctx, "Reminder tasks scheduled",
-			logattr.Count(scheduled),
-		)
-	}
-
-	return nil
-}
-
-// handleRenewalTasks checks for subscriptions needing automatic renewal and schedules tasks.
-func (s *SubscriptionScheduler) handleRenewalTasks(ctx context.Context) error {
-	ctx = appctx.WithTaskType(ctx, RenewalTask)
-	ctx, span := s.tracer.Start(ctx, "Phase: Renewal Tasks",
-		trace.WithAttributes(
-			traceattr.TaskType(RenewalTask),
-		),
-	)
-	defer span.End()
-
-	renewalSubscriptions, err := s.getSubscriptionsDueForRenewal(ctx)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return err
-	}
-
-	scheduled := 0
-	for _, subscription := range renewalSubscriptions {
-		sCtx := observability.EnrichContext(
-			ctx, subscription.UserID.Hex(),
-			subscription.ID.Hex(),
-		)
-
-		if err := s.scheduleRenewalTask(sCtx, subscription); err != nil {
-			span.RecordError(err)
-			slog.ErrorContext(sCtx, "Failed to schedule renewal task",
-				logattr.Error(err),
-			)
-		} else {
-			scheduled++
-		}
-	}
-
-	span.SetAttributes(traceattr.TasksScheduled(scheduled))
-	if scheduled > 0 {
-		slog.InfoContext(ctx, "Renewal tasks scheduled",
-			logattr.Count(scheduled),
-		)
-	}
-
-	return nil
-}
-
-// handleExpirationTasks checks for subscriptions that are expired and schedules tasks.
-func (s *SubscriptionScheduler) handleExpirationTasks(ctx context.Context) error {
-	ctx = appctx.WithTaskType(ctx, ExpirationTask)
-	ctx, span := s.tracer.Start(ctx, "Phase: Expiration Tasks",
-		trace.WithAttributes(
-			traceattr.TaskType(ExpirationTask),
-		),
-	)
-	defer span.End()
-
-	expiringSubscriptions, err := s.getSubscriptionsDueForExpiration(ctx)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return err
-	}
-
-	scheduled := 0
-	for _, subscription := range expiringSubscriptions {
-		sCtx := observability.EnrichContext(
-			ctx, subscription.UserID.Hex(),
-			subscription.ID.Hex(),
-		)
-		if err := s.scheduleExpirationTask(sCtx, subscription); err != nil {
-			span.RecordError(err)
-			slog.ErrorContext(sCtx, "Failed to schedule expiration task",
-				logattr.Error(err),
-			)
-		} else {
-			scheduled++
-		}
-	}
-
-	span.SetAttributes(traceattr.TasksScheduled(scheduled))
-	if scheduled > 0 {
-		slog.InfoContext(ctx, "Expiration tasks scheduled",
-			logattr.Count(scheduled),
+			logattr.Total(total),
+			logattr.Success(scheduled),
+			logattr.Failed(failed),
+			logattr.Queue(s.queueName),
 		)
 	}
 
@@ -318,33 +227,79 @@ func (s *SubscriptionScheduler) getSubscriptionsDueForReminder(ctx context.Conte
 	return s.subscriptionService.FetchUpcomingRenewalsInternal(ctx, s.reminderDays)
 }
 
-// getSubscriptionsDueForRenewal retrieves subscriptions that are due for automatic renewal.
-func (s *SubscriptionScheduler) getSubscriptionsDueForRenewal(ctx context.Context) ([]*models.Subscription, error) {
-	// Calculate time range: now to RenewalHoursBeforeDay hours ahead
-	now := time.Now()
-	renewalWindowStart := now.Add(time.Hour)
-	renewalWindowEnd := now.Add(time.Hour * RenewalHoursBeforeDay)
+// processReminderTask evaluates if a reminder should be sent for a subscription
+// and enqueues the task if necessary. It returns true if a task was successfully
+// enqueued, and false otherwise (e.g., if already sent or an error occurred).
+func (s *SubscriptionScheduler) processReminderTask(
+	ctx context.Context, subscription *models.Subscription,
+) (bool, error) {
+	ctx, span := s.tracer.Start(ctx, "Process Reminder Task",
+		trace.WithAttributes(
+			traceattr.TaskType(ReminderTask),
+		),
+	)
+	defer span.End()
+	ctx = observability.EnrichContext(ctx, subscription.UserID.Hex(), subscription.ID.Hex())
+	observability.EnrichSpan(ctx)
 
-	return s.subscriptionService.FetchSubscriptionsDueForRenewalInternal(ctx, renewalWindowStart, renewalWindowEnd)
-}
+	daysBefore := lib.DaysBetween(time.Now(), subscription.ValidTill, nil)
+	span.SetAttributes(traceattr.SchedulerDaysBefore(daysBefore))
 
-// New method to get subscriptions that need to be marked as expired
-func (s *SubscriptionScheduler) getSubscriptionsDueForExpiration(ctx context.Context) ([]*models.Subscription, error) {
-	// Get canceled subscriptions that are past their validity period but not marked as expired yet
-	return s.subscriptionService.FetchCanceledExpiredSubscriptionsInternal(ctx)
+	redisKey := fmt.Sprintf("reminder_sent:%s:%d", subscription.ID.Hex(), daysBefore)
+	exists, err := s.redisClient.Exists(ctx, redisKey).Result()
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to check Redis for sent reminder")
+
+		slog.ErrorContext(ctx, "Failed to check Redis for sent reminder",
+			logattr.DaysBefore(daysBefore),
+			logattr.RenewalDate(subscription.ValidTill),
+			logattr.Queue(s.queueName),
+			logattr.Error(err),
+		)
+		return false, err
+	}
+	if exists > 0 {
+		span.SetStatus(codes.Ok, "Reminder already sent")
+
+		slog.DebugContext(ctx, "Reminder already sent",
+			logattr.DaysBefore(daysBefore),
+			logattr.RenewalDate(subscription.ValidTill),
+			logattr.Queue(s.queueName),
+		)
+		return false, nil
+	}
+
+	taskID, err := s.scheduleReminderTask(ctx, subscription, daysBefore)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to schedule reminder task")
+
+		slog.ErrorContext(ctx, "Failed to schedule reminder task",
+			logattr.DaysBefore(daysBefore),
+			logattr.RenewalDate(subscription.ValidTill),
+			logattr.Queue(s.queueName),
+			logattr.Error(err),
+		)
+		return false, err
+	}
+	slog.DebugContext(ctx, "Reminder task enqueued successfully",
+		logattr.TaskID(taskID),
+		logattr.DaysBefore(daysBefore),
+		logattr.RenewalDate(subscription.ValidTill),
+		logattr.Queue(s.queueName),
+	)
+	return true, nil
 }
 
 // scheduleReminderTask creates and enqueues a reminder task.
-func (s *SubscriptionScheduler) scheduleReminderTask(ctx context.Context, subscription *models.Subscription, daysBefore int) error {
+func (s *SubscriptionScheduler) scheduleReminderTask(ctx context.Context, subscription *models.Subscription, daysBefore int) (string, error) {
 	// Create a dedicated child span for the network boundary
 	ctx, span := s.tracer.Start(ctx, "Enqueue Reminder Task",
 		observability.AsynqProducerAttributes(ReminderTask)...,
 	)
 	defer span.End()
 	observability.EnrichSpan(ctx)
-	span.SetAttributes(
-		traceattr.SchedulerDaysBefore(daysBefore),
-	)
 
 	payload := ReminderPayload{
 		SubscriptionID: subscription.ID.Hex(),
@@ -356,8 +311,8 @@ func (s *SubscriptionScheduler) scheduleReminderTask(ctx context.Context, subscr
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return fmt.Errorf("failed to marshal payload: %w", err)
+		span.SetStatus(codes.Error, "Failed to marshal payload")
+		return "", fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
 	headers := observability.InjectIntoTaskHeaders(ctx)
@@ -373,27 +328,92 @@ func (s *SubscriptionScheduler) scheduleReminderTask(ctx context.Context, subscr
 	)
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return fmt.Errorf("failed to enqueue task: %w", err)
+		span.SetStatus(codes.Error, "Failed to enqueue task")
+		return "", fmt.Errorf("failed to enqueue task: %w", err)
 	}
 	span.SetAttributes(traceattr.TaskID(info.ID))
 
-	slog.DebugContext(ctx, "Reminder task enqueued",
-		logattr.TaskID(info.ID),
-		slog.Int("days_before", daysBefore),
-		slog.String("queue", s.queueName),
+	return info.ID, nil
+}
+
+// handleRenewalTasks checks for subscriptions needing automatic renewal and
+// schedules tasks.
+func (s *SubscriptionScheduler) handleRenewalTasks(ctx context.Context) error {
+	ctx = appctx.WithTaskType(ctx, RenewalTask)
+	ctx, span := s.tracer.Start(ctx, "Phase: Renewal Tasks",
+		trace.WithAttributes(
+			traceattr.TaskType(RenewalTask),
+		),
 	)
+	defer span.End()
+
+	renewalSubscriptions, err := s.getSubscriptionsDueForRenewal(ctx)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to get subscriptions due for renewal")
+
+		slog.ErrorContext(ctx, "Failed to get subscriptions due for renewal",
+			logattr.Error(err),
+		)
+		return err
+	}
+
+	scheduled := 0
+	failed := 0
+	for _, subscription := range renewalSubscriptions {
+		if _, err := s.scheduleRenewalTask(ctx, subscription); err != nil {
+			failed++
+		} else {
+			scheduled++
+		}
+	}
+
+	total := scheduled + failed
+	if total > 0 && failed == total {
+		err := errors.New("100% task enqueue failure rate detected")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Catastrophic enqueue failure")
+
+		slog.ErrorContext(ctx, "All expiration tasks failed to enqueue",
+			logattr.Total(total),
+			logattr.Queue(s.queueName),
+			logattr.Error(err),
+		)
+		// Return to pollSubscriptions so the roll-up log knows the Phase died
+		return err
+	}
+
+	if scheduled > 0 {
+		slog.InfoContext(ctx, "Renewal tasks scheduled",
+			logattr.Total(total),
+			logattr.Success(scheduled),
+			logattr.Failed(failed),
+			logattr.Queue(s.queueName),
+		)
+	}
 
 	return nil
 }
 
+// getSubscriptionsDueForRenewal retrieves subscriptions that are due for
+// automatic renewal.
+func (s *SubscriptionScheduler) getSubscriptionsDueForRenewal(ctx context.Context) ([]*models.Subscription, error) {
+	// Calculate time range: now to RenewalHoursBeforeDay hours ahead
+	now := time.Now()
+	renewalWindowStart := now.Add(time.Hour)
+	renewalWindowEnd := now.Add(time.Hour * RenewalHoursBeforeDay)
+
+	return s.subscriptionService.FetchSubscriptionsDueForRenewalInternal(ctx, renewalWindowStart, renewalWindowEnd)
+}
+
 // scheduleRenewalTask creates and enqueues a renewal task.
-func (s *SubscriptionScheduler) scheduleRenewalTask(ctx context.Context, subscription *models.Subscription) error {
+func (s *SubscriptionScheduler) scheduleRenewalTask(ctx context.Context, subscription *models.Subscription) (string, error) {
 	// Create a dedicated child span for the network boundary
 	ctx, span := s.tracer.Start(ctx, "Enqueue Renewal Task",
 		observability.AsynqProducerAttributes(RenewalTask)...,
 	)
 	defer span.End()
+	ctx = observability.EnrichContext(ctx, subscription.UserID.Hex(), subscription.ID.Hex())
 	observability.EnrichSpan(ctx)
 
 	payload := RenewalPayload{
@@ -405,16 +425,22 @@ func (s *SubscriptionScheduler) scheduleRenewalTask(ctx context.Context, subscri
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return fmt.Errorf("failed to marshal payload: %w", err)
+		span.SetStatus(codes.Error, "Failed to marshal payload")
+		slog.ErrorContext(ctx, "Failed to marshal payload",
+			logattr.RenewalDate(subscription.ValidTill),
+			logattr.Error(err),
+		)
+		return "", fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
 	headers := observability.InjectIntoTaskHeaders(ctx)
 	task := asynq.NewTaskWithHeaders(RenewalTask, payloadBytes, headers)
 
-	// Calculate when the task should be processed - 4 hours before the renewal date
+	// Calculate when the task should be processed - RenewalHoursBeforeDay hours
+	// before the renewal date.
 	processAt := subscription.ValidTill.Add(-time.Hour * RenewalHoursBeforeDay)
-	// If the process time is in the past (very close to renewal), process immediately
+	// If the process time is in the past (very close to renewal), process
+	// immediately
 	if processAt.Before(time.Now()) {
 		processAt = time.Now()
 	}
@@ -431,8 +457,15 @@ func (s *SubscriptionScheduler) scheduleRenewalTask(ctx context.Context, subscri
 	)
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return fmt.Errorf("failed to enqueue task: %w", err)
+		span.SetStatus(codes.Error, "Failed to enqueue task")
+
+		slog.ErrorContext(ctx, "Failed to enqueue task",
+			logattr.ProcessAt(processAt),
+			logattr.RenewalDate(subscription.ValidTill),
+			logattr.Queue(s.queueName),
+			logattr.Error(err),
+		)
+		return "", fmt.Errorf("failed to enqueue task: %w", err)
 	}
 	span.SetAttributes(traceattr.TaskID(info.ID))
 
@@ -442,16 +475,88 @@ func (s *SubscriptionScheduler) scheduleRenewalTask(ctx context.Context, subscri
 		slog.String("queue", s.queueName),
 	)
 
+	return info.ID, nil
+}
+
+// handleExpirationTasks checks for subscriptions that are expired and
+// schedules tasks.
+func (s *SubscriptionScheduler) handleExpirationTasks(ctx context.Context) error {
+	ctx = appctx.WithTaskType(ctx, ExpirationTask)
+	ctx, span := s.tracer.Start(ctx, "Phase: Expiration Tasks",
+		trace.WithAttributes(
+			traceattr.TaskType(ExpirationTask),
+		),
+	)
+	defer span.End()
+
+	expiringSubscriptions, err := s.getSubscriptionsDueForExpiration(ctx)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to get subscriptions due for expiration")
+
+		slog.ErrorContext(ctx, "Failed to get subscriptions due for expiration",
+			logattr.Error(err),
+		)
+		return err
+	}
+
+	scheduled := 0
+	failed := 0
+	for _, subscription := range expiringSubscriptions {
+		// We receive the error purely for control flow. Telemetry is handled by the child.
+		if _, err := s.scheduleExpirationTask(ctx, subscription); err != nil {
+			failed++
+		} else {
+			scheduled++
+		}
+	}
+
+	// The 100% Failure Catch (Catastrophic Infrastructure Failure)
+	totalAttempted := scheduled + failed
+	if totalAttempted > 0 && failed == totalAttempted {
+		err := errors.New("100% task enqueue failure rate detected")
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Catastrophic enqueue failure")
+
+		slog.ErrorContext(ctx, "All expiration tasks failed to enqueue",
+			logattr.Total(totalAttempted),
+			logattr.Queue(s.queueName),
+			logattr.Error(err),
+		)
+		// Return to pollSubscriptions so the roll-up log knows the Phase died
+		return err
+	}
+
+	if scheduled > 0 {
+		slog.InfoContext(ctx, "Expiration tasks scheduled",
+			logattr.Total(totalAttempted),
+			logattr.Success(scheduled),
+			logattr.Failed(failed),
+			logattr.Queue(s.queueName),
+		)
+	}
+
 	return nil
 }
 
-// New method to schedule expiration task
-func (s *SubscriptionScheduler) scheduleExpirationTask(ctx context.Context, subscription *models.Subscription) error {
+// getSubscriptionsDueForExpiration retrieves subscriptions that have reached
+// their validity end date but are not yet marked as expired.
+func (s *SubscriptionScheduler) getSubscriptionsDueForExpiration(ctx context.Context) ([]*models.Subscription, error) {
+	// Get canceled subscriptions that are past their validity period but not
+	// marked as expired yet
+	return s.subscriptionService.FetchCanceledExpiredSubscriptionsInternal(ctx)
+}
+
+// scheduleExpirationTask creates and enqueues a subscription expiration task.
+// NOTE: This function owns its own telemetry. Any returned error is strictly
+// for control flow and has already been logged and attached to the trace.
+func (s *SubscriptionScheduler) scheduleExpirationTask(ctx context.Context, subscription *models.Subscription) (string, error) {
 	// Create a dedicated child span for the network boundary
 	ctx, span := s.tracer.Start(ctx, "Enqueue Expiration Task",
 		observability.AsynqProducerAttributes(ExpirationTask)...,
 	)
 	defer span.End()
+	ctx = observability.EnrichContext(ctx, subscription.UserID.Hex(), subscription.ID.Hex())
 	observability.EnrichSpan(ctx)
 
 	payload := ExpirationPayload{
@@ -463,8 +568,13 @@ func (s *SubscriptionScheduler) scheduleExpirationTask(ctx context.Context, subs
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return fmt.Errorf("failed to marshal payload: %w", err)
+		span.SetStatus(codes.Error, "Failed to marshal payload")
+
+		slog.ErrorContext(ctx, "Failed to marshal payload",
+			logattr.RenewalDate(subscription.ValidTill),
+			logattr.Error(err),
+		)
+		return "", fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
 	headers := observability.InjectIntoTaskHeaders(ctx)
@@ -481,8 +591,14 @@ func (s *SubscriptionScheduler) scheduleExpirationTask(ctx context.Context, subs
 	)
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return fmt.Errorf("failed to enqueue task: %w", err)
+		span.SetStatus(codes.Error, "Failed to enqueue task")
+
+		slog.ErrorContext(ctx, "Failed to enqueue task",
+			logattr.RenewalDate(subscription.ValidTill),
+			logattr.Queue(s.queueName),
+			logattr.Error(err),
+		)
+		return "", fmt.Errorf("failed to enqueue task: %w", err)
 	}
 	span.SetAttributes(traceattr.TaskID(info.ID))
 
@@ -490,7 +606,7 @@ func (s *SubscriptionScheduler) scheduleExpirationTask(ctx context.Context, subs
 		logattr.TaskID(info.ID),
 	)
 
-	return nil
+	return info.ID, nil
 }
 
 // Close cleanly shuts down the scheduler.

@@ -24,10 +24,9 @@ func WithSubscriptionID(next http.Handler) http.Handler {
 		ctx := appctx.WithSubscriptionID(r.Context(), subscriptionID)
 
 		// Update OpenTelemetry span
-		span := trace.SpanFromContext(ctx)
-		if span.IsRecording() {
-			span.SetAttributes(traceattr.SubscriptionID(subscriptionID))
-		}
+		trace.SpanFromContext(ctx).SetAttributes(
+			traceattr.SubscriptionID(subscriptionID),
+		)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

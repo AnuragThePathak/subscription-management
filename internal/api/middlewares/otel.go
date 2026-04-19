@@ -23,9 +23,9 @@ func OTel() func(http.Handler) http.Handler {
 			if pattern := resolveRoutePattern(r.Context()); pattern != "" {
 				// Set http.route directly on the span so Jaeger displays
 				// the correct route. The labeler only affects metrics.
-				if span := trace.SpanFromContext(r.Context()); span.IsRecording() {
-					span.SetAttributes(semconv.HTTPRoute(pattern))
-				}
+				trace.SpanFromContext(r.Context()).SetAttributes(
+					semconv.HTTPRoute(pattern),
+				)
 
 				if labeler, ok := otelhttp.LabelerFromContext(r.Context()); ok {
 					labeler.Add(semconv.HTTPRoute(pattern))

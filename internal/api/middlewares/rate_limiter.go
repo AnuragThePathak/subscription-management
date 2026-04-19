@@ -35,10 +35,9 @@ func RateLimiter(rateLimiterService services.RateLimiterService) func(http.Handl
 			// Check if the request is allowed.
 			remaining, err := rateLimiterService.Allowed(r.Context(), ip)
 			if err != nil {
-				if span := trace.SpanFromContext(r.Context()); span.IsRecording() {
-					span.RecordError(err)
-					span.SetStatus(codes.Error, "Rate limiter service error")
-				}
+				span := trace.SpanFromContext(r.Context())
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "Rate limiter service error")
 
 				slog.ErrorContext(r.Context(), "Rate limiter service error",
 					logattr.IP(ip),

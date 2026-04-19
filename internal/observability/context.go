@@ -20,12 +20,11 @@ func EnrichContext(ctx context.Context, userID, subscriptionID string) context.C
 }
 
 func EnrichSpan(ctx context.Context) {
-	if span := trace.SpanFromContext(ctx); span.IsRecording() {
-		if userID, ok := appctx.GetUserID(ctx); ok {
-			span.SetAttributes(semconv.EnduserID(userID))
-		}
-		if subscriptionID, ok := appctx.GetSubscriptionID(ctx); ok {
-			span.SetAttributes(traceattr.SubscriptionID(subscriptionID))
-		}
+	span := trace.SpanFromContext(ctx)
+	if userID, ok := appctx.GetUserID(ctx); ok {
+		span.SetAttributes(semconv.EnduserID(userID))
+	}
+	if subscriptionID, ok := appctx.GetSubscriptionID(ctx); ok {
+		span.SetAttributes(traceattr.SubscriptionID(subscriptionID))
 	}
 }

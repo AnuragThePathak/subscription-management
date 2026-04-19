@@ -86,11 +86,9 @@ func (w *QueueWorker) handleSubscriptionReminder(ctx context.Context, task *asyn
 
 	ctx = observability.EnrichContext(ctx, payload.UserID, payload.SubscriptionID)
 	observability.EnrichSpan(ctx)
-	if span := trace.SpanFromContext(ctx); span.IsRecording() {
-		span.SetAttributes(
-			traceattr.SchedulerDaysBefore(payload.DaysBefore),
-		)
-	}
+	trace.SpanFromContext(ctx).SetAttributes(
+		traceattr.SchedulerDaysBefore(payload.DaysBefore),
+	)
 
 	slog.DebugContext(ctx, "Processing subscription reminder",
 		logattr.DaysBefore(payload.DaysBefore),

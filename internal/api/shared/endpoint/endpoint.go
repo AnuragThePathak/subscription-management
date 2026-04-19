@@ -91,10 +91,8 @@ func (h *RequestHandler) ServeRequest(req InternalRequest) {
 			}
 
 			if status >= 500 {
-				if span.IsRecording() {
-					span.RecordError(err)
-					span.SetStatus(codes.Error, appErr.Message())
-				}
+				span.RecordError(err)
+				span.SetStatus(codes.Error, appErr.Message())
 
 				slog.ErrorContext(req.R.Context(), "Request failed",
 					logAttrs...,
@@ -110,10 +108,8 @@ func (h *RequestHandler) ServeRequest(req InternalRequest) {
 				map[string]string{"error": appErr.Message()},
 			)
 		} else {
-			if span.IsRecording() {
-				span.RecordError(err)
-				span.SetStatus(codes.Error, "Unhandled error")
-			}
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "Unhandled error")
 
 			slog.ErrorContext(req.R.Context(), "Unhandled request error",
 				logattr.Method(req.R.Method),

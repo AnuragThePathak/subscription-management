@@ -39,7 +39,7 @@ func NewUserRepository(ctx context.Context, db *mongo.Database) (UserRepository,
 
 	collection := db.Collection("users")
 	if _, err := collection.Indexes().CreateOne(ctx, indexModel); err != nil {
-		return nil, fmt.Errorf("failed to create index for email field: %v", err)
+		return nil, fmt.Errorf("failed to create index for email field: %w", err)
 	}
 
 	return &userRepository{

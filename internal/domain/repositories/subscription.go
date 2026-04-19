@@ -50,7 +50,7 @@ func NewSubscriptionRepository(ctx context.Context, db *mongo.Database) (Subscri
 
 	collection := db.Collection("subscriptions")
 	if _, err := collection.Indexes().CreateMany(ctx, indexes); err != nil {
-		return nil, fmt.Errorf("failed to create indexes: %v", err)
+		return nil, fmt.Errorf("failed to create indexes: %w", err)
 	}
 
 	return &subscriptionRepository{

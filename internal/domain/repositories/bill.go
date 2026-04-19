@@ -41,7 +41,7 @@ func NewBillRepository(ctx context.Context, db *mongo.Database) (BillRepository,
 	
 	collection := db.Collection("bills")
 	if _, err := collection.Indexes().CreateMany(ctx, indexes); err != nil {
-		return nil, fmt.Errorf("failed to create indexes: %v", err)
+		return nil, fmt.Errorf("failed to create indexes: %w", err)
 	}
 	return &billRepository{collection: collection}, nil
 }

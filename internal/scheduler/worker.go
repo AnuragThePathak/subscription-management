@@ -90,7 +90,7 @@ func (w *QueueWorker) handleSubscriptionReminder(ctx context.Context, task *asyn
 	ctx = observability.EnrichContext(ctx, payload.UserID, payload.SubscriptionID)
 	observability.EnrichSpan(ctx)
 	trace.SpanFromContext(ctx).SetAttributes(
-		traceattr.SchedulerDaysBefore(payload.DaysBefore),
+		traceattr.DaysBefore(payload.DaysBefore),
 	)
 
 	slog.DebugContext(ctx, "Processing subscription reminder",
@@ -101,9 +101,9 @@ func (w *QueueWorker) handleSubscriptionReminder(ctx context.Context, task *asyn
 	subscriptionID, err := bson.ObjectIDFromHex(payload.SubscriptionID)
 	if err != nil {
 		slog.ErrorContext(ctx, "Invalid subscription ID",
-		logattr.DaysBefore(payload.DaysBefore),
-		logattr.Error(err),
-	)
+			logattr.DaysBefore(payload.DaysBefore),
+			logattr.Error(err),
+		)
 		return fmt.Errorf("invalid subscription ID: %w", err)
 	}
 
@@ -125,13 +125,48 @@ func (w *QueueWorker) handleSubscriptionReminder(ctx context.Context, task *asyn
 		return nil
 	}
 
-	// Process the reminder (send an email).
-	if err := w.sendReminderNotification(ctx, subscription, payload.DaysBefore); err != nil {
-		slog.ErrorContext(ctx, "Failed to send reminder notification",
+	// Get the user information.
+	user, err := w.userService.FetchUserByIDInternal(ctx, subscription.UserID)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to fetch user",
 			logattr.DaysBefore(payload.DaysBefore),
+			logattr.ValidTill(subscription.ValidTill),
 			logattr.Error(err),
 		)
-		return fmt.Errorf("failed to send reminder notification: %w", err)
+		return fmt.Errorf("failed to fetch user: %w", err)
+	}
+
+	// Send the email notification.
+	if err = w.emailSender.SendReminderEmail(
+		ctx,
+		user.Email,
+		user.Name,
+		subscription,
+		payload.DaysBefore,
+	); err != nil {
+		slog.ErrorContext(ctx, "Failed to send reminder email",
+			logattr.DaysBefore(payload.DaysBefore),
+			logattr.ValidTill(subscription.ValidTill),
+			logattr.Error(err),
+		)
+		return fmt.Errorf("failed to send reminder email: %w", err)
+	}
+	slog.InfoContext(ctx, "Reminder email sent",
+		logattr.DaysBefore(payload.DaysBefore),
+		logattr.ValidTill(subscription.ValidTill),
+	)
+
+	// Store in Redis that the reminder was sent.
+	key := fmt.Sprintf("reminder_sent:%s:%d",
+		subscription.ID.Hex(),
+		payload.DaysBefore,
+	)
+	if err = w.redisClient.Set(ctx, key, "", 24*time.Hour).Err(); err != nil {
+		slog.ErrorContext(ctx, "Failed to set reminder sent key in Redis",
+			logattr.DaysBefore(payload.DaysBefore),
+			logattr.ValidTill(subscription.ValidTill),
+			logattr.Error(err),
+		)
 	}
 
 	return nil
@@ -141,6 +176,9 @@ func (w *QueueWorker) handleSubscriptionReminder(ctx context.Context, task *asyn
 func (w *QueueWorker) handleSubscriptionRenewal(ctx context.Context, task *asynq.Task) error {
 	var payload RenewalPayload
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
+		slog.ErrorContext(ctx, "Failed to unmarshal renewal task payload",
+			logattr.Error(err),
+		)
 		return fmt.Errorf("failed to unmarshal renewal task payload: %w", err)
 	}
 
@@ -152,12 +190,16 @@ func (w *QueueWorker) handleSubscriptionRenewal(ctx context.Context, task *asynq
 	// Parse the subscription ID
 	subscriptionID, err := bson.ObjectIDFromHex(payload.SubscriptionID)
 	if err != nil {
+		slog.ErrorContext(ctx, "Invalid subscription ID",
+			logattr.Error(err))
 		return fmt.Errorf("invalid subscription ID: %w", err)
 	}
 
 	// Fetch the subscription from the database
 	subscription, err := w.subscriptionService.FetchSubscriptionByIDInternal(ctx, subscriptionID)
 	if err != nil {
+		slog.ErrorContext(ctx, "Failed to fetch subscription",
+			logattr.Error(err))
 		return fmt.Errorf("failed to fetch subscription: %w", err)
 	}
 
@@ -182,6 +224,9 @@ func (w *QueueWorker) handleSubscriptionRenewal(ctx context.Context, task *asynq
 	// Process the automatic renewal
 	renewedSubscription, err := w.subscriptionService.RenewSubscriptionInternal(ctx, subscriptionID)
 	if err != nil {
+		slog.ErrorContext(ctx, "Failed to renew subscription",
+			logattr.ValidTill(subscription.ValidTill),
+			logattr.Error(err))
 		return fmt.Errorf("failed to renew subscription: %w", err)
 	}
 
@@ -193,22 +238,25 @@ func (w *QueueWorker) handleSubscriptionRenewal(ctx context.Context, task *asynq
 	user, err := w.userService.FetchUserByIDInternal(ctx, subscription.UserID)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to fetch user for renewal notification",
+			logattr.ValidTill(renewedSubscription.ValidTill),
 			logattr.Error(err),
 		)
 		// Continue without sending email
-	} else {
-		// Send email notification of the successful renewal
-		if err = w.emailSender.SendRenewalConfirmationEmail(
-			ctx,
-			user.Email,
-			user.Name,
-			renewedSubscription,
-		); err != nil {
-			slog.ErrorContext(ctx, "Failed to send renewal confirmation email",
-				logattr.Error(err),
-			)
-			// Continue execution even if email fails
-		}
+		return nil
+	}
+
+	// Send email notification of the successful renewal
+	if err = w.emailSender.SendRenewalConfirmationEmail(
+		ctx,
+		user.Email,
+		user.Name,
+		renewedSubscription,
+	); err != nil {
+		slog.ErrorContext(ctx, "Failed to send renewal confirmation email",
+			logattr.ValidTill(renewedSubscription.ValidTill),
+			logattr.Error(err),
+		)
+		// Continue execution even if email fails
 	}
 
 	return nil
@@ -217,6 +265,9 @@ func (w *QueueWorker) handleSubscriptionRenewal(ctx context.Context, task *asynq
 func (w *QueueWorker) handleSubscriptionExpiration(ctx context.Context, task *asynq.Task) error {
 	var payload ExpirationPayload
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
+		slog.ErrorContext(ctx, "Failed to unmarshal expiration task payload",
+			logattr.Error(err),
+		)
 		return fmt.Errorf("failed to unmarshal expiration task payload: %w", err)
 	}
 
@@ -228,12 +279,18 @@ func (w *QueueWorker) handleSubscriptionExpiration(ctx context.Context, task *as
 	// Parse the subscription ID
 	subscriptionID, err := bson.ObjectIDFromHex(payload.SubscriptionID)
 	if err != nil {
+		slog.ErrorContext(ctx, "Invalid subscription ID",
+			logattr.Error(err),
+		)
 		return fmt.Errorf("invalid subscription ID: %w", err)
 	}
 
 	// Fetch the subscription from the database
 	subscription, err := w.subscriptionService.FetchSubscriptionByIDInternal(ctx, subscriptionID)
 	if err != nil {
+		slog.ErrorContext(ctx, "Failed to fetch subscription",
+			logattr.Error(err),
+		)
 		return fmt.Errorf("failed to fetch subscription: %w", err)
 	}
 
@@ -256,48 +313,16 @@ func (w *QueueWorker) handleSubscriptionExpiration(ctx context.Context, task *as
 
 	// Update the subscription status to Expired
 	if err := w.subscriptionService.MarkCanceledSubscriptionAsExpiredInternal(ctx, subscriptionID); err != nil {
+		slog.ErrorContext(ctx, "Failed to mark subscription as expired",
+			logattr.ValidTill(subscription.ValidTill),
+			logattr.Error(err),
+		)
 		return fmt.Errorf("failed to mark subscription as expired: %w", err)
 	}
 
-	slog.InfoContext(ctx, "Subscription expired")
-
-	return nil
-}
-
-// sendReminderNotification handles sending the actual reminder notification.
-func (w *QueueWorker) sendReminderNotification(ctx context.Context, subscription *models.Subscription, daysBefore int) error {
-	// Get the user information.
-	user, err := w.userService.FetchUserByIDInternal(ctx, subscription.UserID)
-	if err != nil {
-		return fmt.Errorf("failed to fetch user: %w", err)
-	}
-
-	// Send the email notification.
-	if err = w.emailSender.SendReminderEmail(
-		ctx,
-		user.Email,
-		user.Name,
-		subscription,
-		daysBefore,
-	); err != nil {
-		slog.ErrorContext(ctx, "Failed to send reminder email",
-			logattr.Error(err),
-		)
-		return fmt.Errorf("failed to send reminder email: %w", err)
-	}
-
-	slog.InfoContext(ctx, "Reminder notification sent",
-		logattr.DaysBefore(daysBefore),
+	slog.InfoContext(ctx, "Subscription expired",
+		logattr.ValidTill(subscription.ValidTill),
 	)
-
-	// Store in Redis that the reminder was sent.
-	key := fmt.Sprintf("reminder_sent:%s:%d", subscription.ID.Hex(), daysBefore)
-	err = w.redisClient.SetEx(ctx, key, "", 24*time.Hour).Err()
-	if err != nil {
-		slog.ErrorContext(ctx, "Failed to set reminder sent key in Redis",
-			logattr.Error(err),
-		)
-	}
 
 	return nil
 }

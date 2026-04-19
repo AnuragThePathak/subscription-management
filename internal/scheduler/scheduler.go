@@ -39,21 +39,18 @@ type ReminderPayload struct {
 	SubscriptionID string `json:"subscription_id"`
 	UserID         string `json:"user_id"`
 	DaysBefore     int    `json:"days_before"`
-	RenewalDate    string `json:"renewal_date"`
 }
 
 // RenewalPayload represents the data needed to process an automatic renewal.
 type RenewalPayload struct {
 	SubscriptionID string `json:"subscription_id"`
 	UserID         string `json:"user_id"`
-	RenewalDate    string `json:"renewal_date"`
 }
 
 // ExpirationPayload represents the data needed to process a subscription expiration.
 type ExpirationPayload struct {
 	SubscriptionID string `json:"subscription_id"`
 	UserID         string `json:"user_id"`
-	ValidTill      string `json:"valid_till"`
 }
 
 // SubscriptionScheduler handles scheduling of subscription-related tasks.
@@ -243,7 +240,7 @@ func (s *SubscriptionScheduler) processReminderTask(
 	observability.EnrichSpan(ctx)
 
 	daysBefore := lib.DaysBetween(time.Now(), subscription.ValidTill, nil)
-	span.SetAttributes(traceattr.SchedulerDaysBefore(daysBefore))
+	span.SetAttributes(traceattr.DaysBefore(daysBefore))
 
 	redisKey := fmt.Sprintf("reminder_sent:%s:%d", subscription.ID.Hex(), daysBefore)
 	exists, err := s.redisClient.Exists(ctx, redisKey).Result()
@@ -305,7 +302,6 @@ func (s *SubscriptionScheduler) scheduleReminderTask(ctx context.Context, subscr
 		SubscriptionID: subscription.ID.Hex(),
 		UserID:         subscription.UserID.Hex(),
 		DaysBefore:     daysBefore,
-		RenewalDate:    subscription.ValidTill.Format(time.RFC3339),
 	}
 
 	payloadBytes, err := json.Marshal(payload)
@@ -419,7 +415,6 @@ func (s *SubscriptionScheduler) scheduleRenewalTask(ctx context.Context, subscri
 	payload := RenewalPayload{
 		SubscriptionID: subscription.ID.Hex(),
 		UserID:         subscription.UserID.Hex(),
-		RenewalDate:    subscription.ValidTill.Format(time.RFC3339),
 	}
 
 	payloadBytes, err := json.Marshal(payload)
@@ -562,7 +557,6 @@ func (s *SubscriptionScheduler) scheduleExpirationTask(ctx context.Context, subs
 	payload := ExpirationPayload{
 		SubscriptionID: subscription.ID.Hex(),
 		UserID:         subscription.UserID.Hex(),
-		ValidTill:      subscription.ValidTill.Format(time.RFC3339),
 	}
 
 	payloadBytes, err := json.Marshal(payload)

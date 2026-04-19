@@ -296,7 +296,6 @@ func (s *SubscriptionScheduler) scheduleReminderTask(ctx context.Context, subscr
 		observability.AsynqProducerAttributes(ReminderTask)...,
 	)
 	defer span.End()
-	observability.EnrichSpan(ctx)
 
 	payload := ReminderPayload{
 		SubscriptionID: subscription.ID.Hex(),

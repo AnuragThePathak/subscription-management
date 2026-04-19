@@ -81,6 +81,9 @@ func (w *QueueWorker) Start() error {
 func (w *QueueWorker) handleSubscriptionReminder(ctx context.Context, task *asynq.Task) error {
 	var payload ReminderPayload
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
+		slog.ErrorContext(ctx, "Failed to unmarshal payload",
+			logattr.Error(err),
+		)
 		return fmt.Errorf("failed to unmarshal task payload: %v", err)
 	}
 
@@ -97,12 +100,20 @@ func (w *QueueWorker) handleSubscriptionReminder(ctx context.Context, task *asyn
 	// Parse the subscription ID.
 	subscriptionID, err := bson.ObjectIDFromHex(payload.SubscriptionID)
 	if err != nil {
+		slog.ErrorContext(ctx, "Invalid subscription ID",
+		logattr.DaysBefore(payload.DaysBefore),
+		logattr.Error(err),
+	)
 		return fmt.Errorf("invalid subscription ID: %v", err)
 	}
 
 	// Fetch the subscription from the database.
 	subscription, err := w.subscriptionService.FetchSubscriptionByIDInternal(ctx, subscriptionID)
 	if err != nil {
+		slog.ErrorContext(ctx, "Failed to fetch subscription",
+			logattr.DaysBefore(payload.DaysBefore),
+			logattr.Error(err),
+		)
 		return fmt.Errorf("failed to fetch subscription: %v", err)
 	}
 
@@ -115,7 +126,15 @@ func (w *QueueWorker) handleSubscriptionReminder(ctx context.Context, task *asyn
 	}
 
 	// Process the reminder (send an email).
-	return w.sendReminderNotification(ctx, subscription, payload.DaysBefore)
+	if err := w.sendReminderNotification(ctx, subscription, payload.DaysBefore); err != nil {
+		slog.ErrorContext(ctx, "Failed to send reminder notification",
+			logattr.DaysBefore(payload.DaysBefore),
+			logattr.Error(err),
+		)
+		return fmt.Errorf("failed to send reminder notification: %v", err)
+	}
+
+	return nil
 }
 
 // handleSubscriptionRenewal processes an automatic subscription renewal task.

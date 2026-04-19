@@ -40,7 +40,7 @@ func AsynqTracingMiddleware(serviceName string) asynq.MiddlewareFunc {
 
 			// Start a span for the worker execution
 			spanName := fmt.Sprintf("Worker Process %s", task.Type())
-			ctx, span := tracer.Start(ctx, spanName, 
+			ctx, span := tracer.Start(ctx, spanName,
 				trace.WithSpanKind(trace.SpanKindConsumer),
 				trace.WithAttributes(
 					semconv.MessagingSystemKey.String("asynq"),
@@ -49,8 +49,6 @@ func AsynqTracingMiddleware(serviceName string) asynq.MiddlewareFunc {
 				),
 			)
 			defer span.End()
-
-			// Inject Task ID for trace span
 			if taskID, ok := asynq.GetTaskID(ctx); ok {
 				span.SetAttributes(traceattr.TaskID(taskID))
 			}
@@ -59,15 +57,16 @@ func AsynqTracingMiddleware(serviceName string) asynq.MiddlewareFunc {
 			ctx = appctx.WithTaskType(ctx, task.Type())
 
 			// Execute actual task handler
-			err := next.ProcessTask(ctx, task)
-
-			// Record failure if it errored
-			if err != nil {
+			if err := next.ProcessTask(ctx, task); err != nil {
 				span.RecordError(err)
-				span.SetStatus(codes.Error, err.Error())
+				span.SetStatus(
+					codes.Error,
+					fmt.Sprintf("Failed to process task %s", task.Type()),
+				)
+				return err
 			}
 
-			return err
+			return nil
 		})
 	}
 }

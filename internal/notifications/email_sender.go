@@ -3,13 +3,11 @@ package notifications
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
-	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/anuragthepathak/subscription-management/internal/core/traceattr"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
-	"github.com/anuragthepathak/subscription-management/internal/observability"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"gopkg.in/gomail.v2"
 )
@@ -51,7 +49,13 @@ func NewEmailSender(config EmailConfig) *EmailSender {
 }
 
 // SendReminderEmail sends a subscription reminder email.
-func (es *EmailSender) SendReminderEmail(ctx context.Context, toEmail string, userName string, subscription *models.Subscription, daysBefore int) error {
+func (es *EmailSender) SendReminderEmail(
+	ctx context.Context,
+	toEmail string,
+	userName string,
+	subscription *models.Subscription,
+	daysBefore int,
+) error {
 	// Check context to allow for cancellation.
 	if err := ctx.Err(); err != nil {
 		return err
@@ -61,21 +65,13 @@ func (es *EmailSender) SendReminderEmail(ctx context.Context, toEmail string, us
 	ctx, span := es.tracer.Start(ctx, "Send Reminder Email",
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
-			traceattr.EmailDaysBefore(daysBefore),
+			traceattr.DaysBefore(daysBefore),
 		),
 	)
 	defer span.End()
-	observability.EnrichSpan(ctx)
 
-	// Find appropriate template.
-	templateType := FindTemplateByDays(daysBefore)
-
-	// Get the template.
-	templates := GetTemplates()
-	template, exists := templates[templateType]
-	if !exists {
-		return fmt.Errorf("template not found: %s", templateType)
-	}
+	// Get the template
+	template := getTemplate(daysBefore)
 
 	// Format price string.
 	priceStr := fmt.Sprintf("%s %d (%s)",
@@ -85,20 +81,20 @@ func (es *EmailSender) SendReminderEmail(ctx context.Context, toEmail string, us
 	)
 
 	// Create template data.
-	data := TemplateData{
-		UserName:         userName,
-		SubscriptionName: subscription.Name,
-		RenewalDate:      FormatTime(subscription.ValidTill.Local()),
-		PlanName:         subscription.Name,
-		Price:            priceStr,
-		AccountURL:       es.config.AccountURL,
-		SupportURL:       es.config.SupportURL,
-		DaysLeft:         daysBefore,
+	data := templateData{
+		userName:         userName,
+		subscriptionName: subscription.Name,
+		renewalDate:      FormatTime(subscription.ValidTill.Local()),
+		planName:         subscription.Name,
+		price:            priceStr,
+		accountURL:       es.config.AccountURL,
+		supportURL:       es.config.SupportURL,
+		daysLeft:         daysBefore,
 	}
 
 	// Generate email content.
-	subject := template.GenerateSubject(data)
-	htmlBody := template.GenerateBody(data)
+	subject := template.generateSubject(data)
+	htmlBody := template.generateBody(data)
 
 	// Create email message.
 	message := gomail.NewMessage()
@@ -109,14 +105,10 @@ func (es *EmailSender) SendReminderEmail(ctx context.Context, toEmail string, us
 
 	// Send the email.
 	if err := es.dialer.DialAndSend(message); err != nil {
-		return fmt.Errorf("failed to send email: %w", err)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to send reminder email")
+		return fmt.Errorf("failed to send reminder email: %w", err)
 	}
-
-	// Log the successful email sending.
-	slog.InfoContext(ctx, "Reminder email sent",
-		logattr.Template(string(templateType)),
-		logattr.SubscriptionName(subscription.Name),
-	)
 
 	return nil
 }
@@ -138,7 +130,6 @@ func (es *EmailSender) SendRenewalConfirmationEmail(
 		trace.WithSpanKind(trace.SpanKindClient),
 	)
 	defer span.End()
-	observability.EnrichSpan(ctx)
 
 	subject := fmt.Sprintf("Your %s subscription has been renewed", subscription.Name)
 	renewalAmount := fmt.Sprintf("%d %s", subscription.Price, subscription.Currency)
@@ -176,12 +167,10 @@ func (es *EmailSender) SendRenewalConfirmationEmail(
 
 	// Send the email.
 	if err := es.dialer.DialAndSend(message); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "Failed to send renewal confirmation email")
 		return fmt.Errorf("failed to send renewal confirmation email: %w", err)
 	}
-	// Log the successful email sending.
-	slog.InfoContext(ctx, "Renewal confirmation email sent",
-		logattr.SubscriptionName(subscription.Name),
-	)
 	return nil
 }
 

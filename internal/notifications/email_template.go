@@ -5,110 +5,65 @@ import (
 	"time"
 )
 
-// TemplateType represents different email template types.
-type TemplateType string
-
-const (
-	SevenDaysReminder TemplateType = "7 days before reminder"
-	FiveDaysReminder  TemplateType = "5 days before reminder"
-	ThreeDaysReminder TemplateType = "3 days before reminder" // Changed from 2 to 3
-	OneDayReminder    TemplateType = "1 day before reminder"
-	CustomReminder    TemplateType = "custom days reminder"
-)
-
-// EmailTemplate represents an email template with subject and body generators.
-type EmailTemplate struct {
-	Label           string
-	GenerateSubject func(TemplateData) string
-	GenerateBody    func(TemplateData) string
+// emailTemplate represents an email template with subject and body generators.
+type emailTemplate struct {
+	label           string
+	generateSubject func(templateData) string
+	generateBody    func(templateData) string
 }
 
-// TemplateData contains all data needed for email templates.
-type TemplateData struct {
-	UserName         string
-	SubscriptionName string
-	RenewalDate      string
-	PlanName         string
-	Price            string
-	AccountURL       string
-	SupportURL       string
-	DaysLeft         int
+// templateData contains all data needed for email templates.
+type templateData struct {
+	userName         string
+	subscriptionName string
+	renewalDate      string
+	planName         string
+	price            string
+	accountURL       string
+	supportURL       string
+	daysLeft         int
 }
 
-// GetTemplates returns all available email templates.
-func GetTemplates() map[TemplateType]EmailTemplate {
-	return map[TemplateType]EmailTemplate{
-		SevenDaysReminder: {
-			Label: "7 days before reminder",
-			GenerateSubject: func(data TemplateData) string {
-				return fmt.Sprintf("📅 Reminder: Your %s Subscription Renews in 7 Days!", data.SubscriptionName)
-			},
-			GenerateBody: func(data TemplateData) string {
-				return generateEmailTemplate(data)
-			},
-		},
-		FiveDaysReminder: {
-			Label: "5 days before reminder",
-			GenerateSubject: func(data TemplateData) string {
-				return fmt.Sprintf("⏳ %s Renews in 5 Days - Stay Subscribed!", data.SubscriptionName)
-			},
-			GenerateBody: func(data TemplateData) string {
-				return generateEmailTemplate(data)
-			},
-		},
-		ThreeDaysReminder: {
-			Label: "3 days before reminder",
-			GenerateSubject: func(data TemplateData) string {
-				return fmt.Sprintf("🚀 3 Days Left! %s Subscription Renewal", data.SubscriptionName) // Changed from 2 to 3
-			},
-			GenerateBody: func(data TemplateData) string {
-				return generateEmailTemplate(data)
-			},
-		},
-		OneDayReminder: {
-			Label: "1 day before reminder",
-			GenerateSubject: func(data TemplateData) string {
-				return fmt.Sprintf("⚡ Final Reminder: %s Renews Tomorrow!", data.SubscriptionName)
-			},
-			GenerateBody: func(data TemplateData) string {
-				return generateEmailTemplate(data)
-			},
-		},
-		CustomReminder: {
-			Label: "Custom days reminder",
-			GenerateSubject: func(data TemplateData) string {
-				if data.DaysLeft > 7 {
-					return fmt.Sprintf("📆 Your %s Subscription Renews in %d Days", data.SubscriptionName, data.DaysLeft)
-				} else if data.DaysLeft > 1 {
-					return fmt.Sprintf("🔔 %s Subscription Renews in %d Days!", data.SubscriptionName, data.DaysLeft)
-				} else if data.DaysLeft == 0 {
-					return fmt.Sprintf("⚠️ URGENT: %s Subscription Renews Today!", data.SubscriptionName)
-				} else {
-					return fmt.Sprintf("⚠️ %s Subscription Renewal Notice", data.SubscriptionName)
-				}
-			},
-			GenerateBody: func(data TemplateData) string {
-				return generateEmailTemplate(data)
-			},
+// getTemplate returns the appropriate email template based on days before renewal
+func getTemplate(daysBefore int) emailTemplate {
+	template := emailTemplate{
+		generateBody: func(data templateData) string {
+			return generateEmailTemplate(data)
 		},
 	}
-}
 
-// FindTemplateByDays returns the appropriate template based on days before renewal.
-func FindTemplateByDays(daysBefore int) TemplateType {
 	switch daysBefore {
 	case 7:
-		return SevenDaysReminder
+		template.generateSubject = func(data templateData) string {
+			return fmt.Sprintf("📅 Reminder: Your %s Subscription Renews in 7 Days!", data.subscriptionName)
+		}
 	case 5:
-		return FiveDaysReminder
+		template.generateSubject = func(data templateData) string {
+			return fmt.Sprintf("⏳ %s Renews in 5 Days - Stay Subscribed!", data.subscriptionName)
+		}
 	case 3:
-		return ThreeDaysReminder
+		template.generateSubject = func(data templateData) string {
+			return fmt.Sprintf("🚀 3 Days Left! %s Subscription Renewal", data.subscriptionName)
+		}
 	case 1:
-		return OneDayReminder
+		template.generateSubject = func(data templateData) string {
+			return fmt.Sprintf("⚡ Final Reminder: %s Renews Tomorrow!", data.subscriptionName)
+		}
 	default:
-		// For any other number of days, use the custom template
-		return CustomReminder
+		template.generateSubject = func(data templateData) string {
+			if data.daysLeft > 7 {
+				return fmt.Sprintf("📆 Your %s Subscription Renews in %d Days", data.subscriptionName, data.daysLeft)
+			} else if data.daysLeft > 1 {
+				return fmt.Sprintf("🔔 %s Subscription Renews in %d Days!", data.subscriptionName, data.daysLeft)
+			} else if data.daysLeft == 0 {
+				return fmt.Sprintf("⚠️ URGENT: %s Subscription Renews Today!", data.subscriptionName)
+			} else {
+				return fmt.Sprintf("⚠️ %s Subscription Renewal Notice", data.subscriptionName)
+			}
+		}
 	}
+
+	return template
 }
 
 // FormatTime formats time.Time into a readable date string.
@@ -117,7 +72,7 @@ func FormatTime(t time.Time) string {
 }
 
 // generateEmailTemplate creates HTML email content based on template data.
-func generateEmailTemplate(data TemplateData) string {
+func generateEmailTemplate(data templateData) string {
 	return fmt.Sprintf(`
 <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 0; background-color: #f4f7fa;">
     <table cellpadding="0" cellspacing="0" border="0" width="100%%" style="background-color: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
@@ -164,5 +119,14 @@ func generateEmailTemplate(data TemplateData) string {
         </tr>
     </table>
 </div>
-`, data.UserName, data.SubscriptionName, data.RenewalDate, data.DaysLeft, data.PlanName, data.Price, data.AccountURL, data.SupportURL)
+`,
+		data.userName,
+		data.subscriptionName,
+		data.renewalDate,
+		data.daysLeft,
+		data.planName,
+		data.price,
+		data.accountURL,
+		data.supportURL,
+	)
 }

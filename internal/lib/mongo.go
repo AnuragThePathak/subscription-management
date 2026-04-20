@@ -3,6 +3,9 @@ package lib
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/apperror"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -51,4 +54,34 @@ func FindMany[T any](ctx context.Context, collection *mongo.Collection, filter b
 		return nil, apperror.NewDBError(err)
 	}
 	return results, nil
+}
+
+// BuildMongoURI constructs a connection string dynamically based on the host type.
+func BuildMongoURI(host string, port int, username, password, dbName, authSource string) string {
+	// Escaping ensures special characters in credentials don't break the URI structure.
+	escapedUsername := url.PathEscape(username)
+	escapedPassword := url.PathEscape(password)
+
+	// If the host is an Atlas cluster, use the SRV protocol.
+	// The port is intentionally omitted because DNS handles it.
+	if strings.HasSuffix(host, "mongodb.net") {
+		return fmt.Sprintf("mongodb+srv://%s:%s@%s/%s?authSource=%s",
+			escapedUsername,
+			escapedPassword,
+			host,
+			dbName,
+			authSource,
+		)
+	}
+
+	// For standard, self-hosted, or Docker databases, use the standard protocol
+	// and explicitly include the configured port (defaulting to 27017).
+	return fmt.Sprintf("mongodb://%s:%s@%s:%d/%s?authSource=%s",
+		escapedUsername,
+		escapedPassword,
+		host,
+		port,
+		dbName,
+		authSource,
+	)
 }

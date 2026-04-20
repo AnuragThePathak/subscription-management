@@ -7,8 +7,12 @@ server:
     key_path: "" # Path to TLS private key (required if TLS is enabled)
 
 database:
-  url: "url" # MongoDB connection URI
-  name: "project" # MongoDB database name
+  host: "host"
+  port: 27017
+  username: "username"
+  password: "password"
+  name: "project"
+  auth_source: "admin"
 
 jwt:
   access_secret: "secret" # Secret used to sign access tokens
@@ -24,7 +28,8 @@ rate_limiter:
     period: "2s"
 
 redis:
-  url: "url"
+  host: "host"
+  port: 6379
   password: ""
   db: 0
 

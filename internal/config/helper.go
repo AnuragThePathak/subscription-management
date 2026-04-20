@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/url"
 	"os"
 	"time"
 
 	"github.com/anuragthepathak/subscription-management/internal/adapters"
 	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
+	"github.com/anuragthepathak/subscription-management/internal/lib"
 	"github.com/anuragthepathak/subscription-management/internal/observability"
 	"github.com/go-redis/redis_rate/v10"
 	"github.com/hibiken/asynq"
@@ -55,7 +55,16 @@ func composeMonitors(m1, m2 *event.CommandMonitor) *event.CommandMonitor {
 
 // DatabaseConnection establishes a connection to the MongoDB database.
 func DatabaseConnection(dbConfig DatabaseConfig, otelEnabled bool) (*adapters.Database, error) {
-	dbClientOpts := options.Client().ApplyURI(dbConfig.URL)
+	dbClientOpts := options.Client().ApplyURI(
+		lib.BuildMongoURI(
+			dbConfig.Host,
+			dbConfig.Port,
+			dbConfig.Username,
+			dbConfig.Password,
+			dbConfig.Name,
+			dbConfig.AuthSource,
+		),
+	)
 
 	if otelEnabled {
 		dbClientOpts.SetMonitor(
@@ -69,37 +78,46 @@ func DatabaseConnection(dbConfig DatabaseConfig, otelEnabled bool) (*adapters.Da
 	db := adapters.Database{}
 	var err error
 	if db.Client, err = mongo.Connect(dbClientOpts); err != nil {
-		slog.Error("Failed to initialize MongoDB client",
-			logattr.Host(redactURL(dbConfig.URL)),
-			logattr.Error(err),
-		)
-		return nil, err
+		return nil, fmt.Errorf("failed to initialize MongoDB client: %w", err)
 	}
 	db.DB = db.Client.Database(dbConfig.Name)
+
 	slog.Info("Initialized MongoDB client",
-		logattr.Host(redactURL(dbConfig.URL)),
+		logattr.Host(dbConfig.Host),
+		logattr.Port(dbConfig.Port),
 		logattr.Database(dbConfig.Name),
 	)
 	return &db, nil
 }
 
 // RedisConnection establishes a connection to the Redis database.
-func RedisConnection(redisConfig RedisConfig, otelEnabled bool) *adapters.Redis {
+func RedisConnection(
+	redisConfig RedisConfig,
+	otelEnabled bool,
+) (*adapters.Redis, error) {
+	addr := fmt.Sprintf("%s:%d", redisConfig.Host, redisConfig.Port)
 	rdb := adapters.Redis{}
 	rdb.Client = redis.NewClient(&redis.Options{
-		Addr:     redisConfig.URL,
+		Addr:     addr,
 		Password: redisConfig.Password,
 		DB:       redisConfig.DB,
 	})
 
 	if otelEnabled {
 		if err := redisotel.InstrumentTracing(rdb.Client); err != nil {
-			slog.Error("Failed to instrument Redis with tracing", logattr.Error(err))
+			return nil, fmt.Errorf("failed to instrument Redis with tracing: %w", err)
+		}
+		if err := redisotel.InstrumentMetrics(rdb.Client); err != nil {
+			return nil, fmt.Errorf("failed to instrument Redis metrics: %w", err)
 		}
 	}
 
-	slog.Info("Connected to Redis", logattr.Host(redisConfig.URL), logattr.Database(fmt.Sprintf("%d", redisConfig.DB)))
-	return &rdb
+	slog.Info("Initialized Redis client",
+		logattr.Host(redisConfig.Host),
+		logattr.Port(redisConfig.Port),
+		logattr.RedisDB(redisConfig.DB),
+	)
+	return &rdb, nil
 }
 
 // SetupLogger configures the global logger based on the environment.
@@ -125,33 +143,46 @@ func SetupLogger(env string, otelEnabled bool) error {
 
 		if err := os.MkdirAll("logs", 0o755); err != nil {
 			return fmt.Errorf("failed to create logs directory: %w", err)
-		} else if logFile, err := os.OpenFile("logs/app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err != nil {
-			return fmt.Errorf("failed to open log file: %w", err)
-		} else {
-			writers = append(writers, logFile)
 		}
+		logFile, err := os.OpenFile("logs/app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		if err != nil {
+			return fmt.Errorf("failed to open log file named app.log: %w", err)
+		}
+		writers = append(writers, logFile)
 
-		handler = slog.NewJSONHandler(io.MultiWriter(writers...), &slog.HandlerOptions{
-			Level:     programLevel,
-			AddSource: true,
-		})
+		handler = slog.NewJSONHandler(
+			io.MultiWriter(writers...),
+			&slog.HandlerOptions{
+				Level:     programLevel,
+				AddSource: true,
+			},
+		)
 	} else if env == "production" {
-		handler = slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
-			Level:     programLevel,
-			AddSource: true,
-		})
+		handler = slog.NewJSONHandler(
+			os.Stderr,
+			&slog.HandlerOptions{
+				Level:     programLevel,
+				AddSource: true,
+			},
+		)
 	} else {
-		handler = slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-			Level:     programLevel,
-			AddSource: true,
-		})
+		handler = slog.NewTextHandler(
+			os.Stderr,
+			&slog.HandlerOptions{
+				Level:     programLevel,
+				AddSource: true,
+			},
+		)
 	}
 
 	// Wrap with trace correlation — adds trace_id/span_id when an OTel span is active.
 	handler = observability.NewTraceHandler(handler)
 
 	slog.SetDefault(slog.New(handler))
-	slog.Info("Logger initialized", logattr.Env(env))
+	slog.Info("Logger initialized",
+		logattr.Env(env),
+		logattr.OtelEnabled(otelEnabled),
+	)
 	return nil
 }
 
@@ -175,22 +206,13 @@ func NewRateLimit(rateConfig *RateLimiterConfig) *redis_rate.Limit {
 // QueueRedisConfig returns Redis configuration for the task queue.
 func QueueRedisConfig(redisConfig RedisConfig) *asynq.RedisClientOpt {
 	slog.Debug("Queue Redis configuration initialized",
-		logattr.Host(redactURL(redisConfig.URL)),
+		logattr.Host(redisConfig.Host),
+		logattr.Port(redisConfig.Port),
 		logattr.Database(fmt.Sprintf("%d", redisConfig.DB)),
 	)
 	return &asynq.RedisClientOpt{
-		Addr:     redisConfig.URL,
+		Addr:     fmt.Sprintf("%s:%d", redisConfig.Host, redisConfig.Port),
 		Password: redisConfig.Password,
 		DB:       redisConfig.DB,
 	}
-}
-
-// redactURL strips credentials from a connection string, returning only the host.
-// Falls back to the raw value if parsing fails.
-func redactURL(raw string) string {
-	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" {
-		return "<unparseable>"
-	}
-	return u.Host
 }

@@ -2,7 +2,9 @@ package adapters
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/redis/go-redis/v9"
@@ -42,9 +44,11 @@ func (r *Redis) Shutdown(ctx context.Context) error {
 
 // Ping checks the connection to the Redis server.
 func (r *Redis) Ping(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
 	if err := r.Client.Ping(ctx).Err(); err != nil {
-		slog.Error("Redis ping failed", logattr.Error(err))
-		return err
+		return fmt.Errorf("redis ping failed: %w", err)
 	}
 	slog.Debug("Redis ping successful")
 	return nil

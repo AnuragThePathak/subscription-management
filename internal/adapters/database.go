@@ -2,7 +2,9 @@ package adapters
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -27,9 +29,11 @@ func (db *Database) Shutdown(ctx context.Context) error {
 
 // Ping checks the connection to the MongoDB server.
 func (db *Database) Ping(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	if err := db.Client.Ping(ctx, nil); err != nil {
-		slog.Error("MongoDB ping failed", logattr.Error(err))
-		return err
+		return fmt.Errorf("failed to ping MongoDB: %w", err)
 	}
 	slog.Debug("MongoDB ping successful")
 	return nil

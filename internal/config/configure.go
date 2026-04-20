@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -18,6 +19,10 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("server.port", 8080)
 	viper.SetDefault("server.request_timeout", "10s")
 	viper.SetDefault("server.tls.enabled", false)
+	viper.SetDefault("database.auth_source", "admin")
+	viper.SetDefault("database.port", 27017)
+	viper.SetDefault("redis.port", 6379)
+	viper.SetDefault("redis.db", 0)
 	viper.SetDefault("jwt.access_timeout", "1")
 	viper.SetDefault("jwt.refresh_timeout", "72")
 	viper.SetDefault("rate_limiter.requests_per_minute", 3*60)
@@ -35,8 +40,9 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("email.from_name", "Subscription Management")
 
 	// Read the YAML configuration file.
-	if err := viper.ReadInConfig(); err != nil {
-		slog.Warn("Config file not found, using defaults", logattr.Error(err))
+	if err := viper.ReadInConfig(); err != nil &&
+		!errors.As(err, &viper.ConfigFileNotFoundError{}) {
+		return nil, fmt.Errorf("config file found but failed to parse: %w", err)
 	}
 
 	// Enable environment variables to override config file settings.
@@ -45,14 +51,15 @@ func LoadConfig() (*Config, error) {
 
 	var config Config
 	if err := viper.Unmarshal(&config); err != nil {
-		slog.Error("Failed to unmarshal configuration", logattr.Error(err))
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal configuration: %w", err)
 	}
 	if err := config.Validate(); err != nil {
-		slog.Error("Configuration validation failed", logattr.Error(err))
-		return nil, err
+		return nil, fmt.Errorf("configuration validation failed: %w", err)
 	}
-	slog.Info("Configuration loaded successfully")
+	slog.Info("Configuration loaded successfully",
+		logattr.Env(config.Env),
+		logattr.ConfigFile(viper.ConfigFileUsed()),
+	)
 	return &config, nil
 }
 
@@ -69,11 +76,35 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	if c.Database.URL == "" {
-		missing = append(missing, "database.url")
+	// Database configuration validation
+	if c.Database.Host == "" {
+		missing = append(missing, "database.host")
+	}
+	if c.Database.Username == "" {
+		missing = append(missing, "database.username")
+	}
+	if c.Database.Password == "" {
+		missing = append(missing, "database.password")
 	}
 	if c.Database.Name == "" {
 		missing = append(missing, "database.name")
+	}
+	if c.Database.AuthSource == "" {
+		missing = append(missing, "database.auth_source")
+	}
+	if c.Database.Port <= 0 || c.Database.Port > 65535 {
+		missing = append(missing, "database.port (must be between 1 and 65535)")
+	}
+
+	// Redis configuration validation
+	if c.Redis.Host == "" {
+		missing = append(missing, "redis.host")
+	}
+	if c.Redis.Port <= 0 || c.Redis.Port > 65535 {
+		missing = append(missing, "redis.port (must be between 1 and 65535)")
+	}
+	if c.Redis.DB < 0 {
+		missing = append(missing, "redis.db (must be 0 or greater)")
 	}
 	if c.JWT.AccessSecret == "" {
 		missing = append(missing, "jwt.access_secret")
@@ -84,8 +115,8 @@ func (c *Config) Validate() error {
 	if c.JWT.Issuer == "" {
 		missing = append(missing, "jwt.issuer")
 	}
-	if c.Redis.URL == "" {
-		missing = append(missing, "redis.url")
+	if c.Redis.Host == "" {
+		missing = append(missing, "redis.host")
 	}
 	if c.RateLimiter.App.Rate == 0 {
 		missing = append(missing, "rate_limiter.app.rate")
@@ -104,7 +135,11 @@ func (c *Config) Validate() error {
 	}
 
 	if len(missing) > 0 {
-		return fmt.Errorf("missing required config fields: %v", missing)
+		return fmt.Errorf(
+			"%d missing required config fields: %v",
+			len(missing),
+			missing,
+		)
 	}
 
 	return nil

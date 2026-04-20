@@ -21,8 +21,12 @@ type ServerConfig struct {
 
 // DatabaseConfig holds the MongoDB connection details.
 type DatabaseConfig struct {
-	URL  string `mapstructure:"url"`
-	Name string `mapstructure:"name"`
+	Host       string `mapstructure:"host"`
+	Port       int    `mapstructure:"port"`
+	Username   string `mapstructure:"username"`
+	Password   string `mapstructure:"password"`
+	Name       string `mapstructure:"name"`
+	AuthSource string `mapstructure:"auth_source"`
 }
 
 // RateLimiterConfig defines the rate limiting settings.
@@ -34,7 +38,8 @@ type RateLimiterConfig struct {
 
 // RedisConfig holds the Redis connection details.
 type RedisConfig struct {
-	URL      string `mapstructure:"url"`
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
 	Password string `mapstructure:"password"`
 	DB       int    `mapstructure:"db"`
 }

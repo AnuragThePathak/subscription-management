@@ -40,11 +40,14 @@ const (
 	keyFailed         = "failed"
 	keyHost           = "host"
 	keyDatabase       = "database"
+	keyRedisDB        = "redis_db"
 	keyRate           = "rate"
 	keyBurst          = "burst"
 	keyPeriod         = "period"
 	keyQueue          = "queue"
 	keyRenewalDate    = "renewal_date"
+	keyConfigFile     = "config_file"
+	keyOtelEnabled    = "otel_enabled"
 )
 
 // UserID returns an slog.Attr for the user ID.
@@ -217,6 +220,11 @@ func Database(d string) slog.Attr {
 	return slog.String(keyDatabase, d)
 }
 
+// RedisDB returns an slog.Attr for the Redis database number.
+func RedisDB(d int) slog.Attr {
+	return slog.Int(keyRedisDB, d)
+}
+
 // Rate returns an slog.Attr for the rate value.
 func Rate(r int) slog.Attr {
 	return slog.Int(keyRate, r)
@@ -240,4 +248,14 @@ func Queue(q string) slog.Attr {
 // RenewalDate returns an slog.Attr for the renewal date.
 func RenewalDate(t time.Time) slog.Attr {
 	return slog.Time(keyRenewalDate, t)
+}
+
+// ConfigFile returns an slog.Attr for the config file path.
+func ConfigFile(f string) slog.Attr {
+	return slog.String(keyConfigFile, f)
+}
+
+// OtelEnabled returns an slog.Attr for the OpenTelemetry enabled status.
+func OtelEnabled(b bool) slog.Attr {
+	return slog.Bool(keyOtelEnabled, b)
 }

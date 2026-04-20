@@ -3,7 +3,9 @@ package observability
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"go.opentelemetry.io/otel"
@@ -25,6 +27,9 @@ type Provider struct {
 // InitOTel initializes OpenTelemetry with trace and metric providers.
 // It returns a Provider whose Shutdown method should be deferred.
 func InitOTel(ctx context.Context, cfg Config) (*Provider, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			semconv.ServiceNameKey.String(cfg.ServiceName),
@@ -32,7 +37,7 @@ func InitOTel(ctx context.Context, cfg Config) (*Provider, error) {
 		),
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create resource: %w", err)
 	}
 
 	// Trace exporter: OTLP gRPC → Jaeger.
@@ -41,7 +46,7 @@ func InitOTel(ctx context.Context, cfg Config) (*Provider, error) {
 		otlptracegrpc.WithInsecure(),
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create trace exporter: %w", err)
 	}
 
 	tracerProvider := sdktrace.NewTracerProvider(
@@ -59,7 +64,7 @@ func InitOTel(ctx context.Context, cfg Config) (*Provider, error) {
 	// Metrics exporter: Prometheus pull-based.
 	prometheusExporter, err := otelprometheus.New()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create metrics exporter: %w", err)
 	}
 
 	meterProvider := sdkmetric.NewMeterProvider(

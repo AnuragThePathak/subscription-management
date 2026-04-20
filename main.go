@@ -45,7 +45,11 @@ func main() {
 
 	// Configure the default slog logger.
 	if err = config.SetupLogger(cf.Env, cf.OTel.Enabled); err != nil {
-		slog.Error("Failed to configure logger", logattr.Error(err))
+		slog.Error("Failed to configure logger",
+			logattr.Env(cf.Env),
+			logattr.OtelEnabled(cf.OTel.Enabled),
+			logattr.Error(err),
+		)
 		os.Exit(1)
 	}
 
@@ -57,33 +61,65 @@ func main() {
 	// Initialize OpenTelemetry (must be after logger, before DB/Redis so future phases can trace them).
 	var otelProvider *observability.Provider
 	if cf.OTel.Enabled {
-		cf.OTel.Environment = cf.Env
-		if otelProvider, err = observability.InitOTel(ctx, cf.OTel); err != nil {
-			slog.Error("Failed to initialize OpenTelemetry", logattr.Error(err))
+		otelConfig := cf.OTel
+		otelConfig.Environment = cf.Env
+		if otelProvider, err = observability.InitOTel(ctx, otelConfig); err != nil {
+			slog.Error("Failed to initialize OpenTelemetry",
+				logattr.Jaeger(otelConfig.JaegerEndpoint),
+				logattr.Error(err),
+			)
 			os.Exit(1)
 		}
 	} else {
-		slog.Info("OpenTelemetry disabled")
+		slog.Warn("OpenTelemetry disabled",
+			logattr.Env(cf.Env),
+			logattr.OtelEnabled(cf.OTel.Enabled),
+		)
 	}
 
 	// Initialize the database client
 	var database *adapters.Database
 	{
-		if database, err = config.DatabaseConnection(cf.Database, cf.OTel.Enabled); err != nil {
-			slog.Error("Failed to initialize database client", logattr.Error(err))
+		dbConfig := cf.Database
+		if database, err = config.DatabaseConnection(dbConfig, cf.OTel.Enabled); err != nil {
+			slog.Error("Failed to initialize database client",
+				logattr.Host(dbConfig.Host),
+				logattr.Port(dbConfig.Port),
+				logattr.Database(dbConfig.Name),
+				logattr.Error(err),
+			)
 			os.Exit(1)
 		}
 		if err = database.Ping(ctx); err != nil {
-			slog.Error("Failed to connect to database", logattr.Error(err))
+			slog.Error("Failed to connect to database",
+				logattr.Host(dbConfig.Host),
+				logattr.Port(dbConfig.Port),
+				logattr.Database(dbConfig.Name),
+				logattr.Error(err),
+			)
 			os.Exit(1)
 		}
 	}
 
 	var redis *adapters.Redis
 	{
-		redis = config.RedisConnection(cf.Redis, cf.OTel.Enabled)
+		redisConfig := cf.Redis
+		if redis, err = config.RedisConnection(redisConfig, cf.OTel.Enabled); err != nil {
+			slog.Error("Failed initialize Redis client",
+				logattr.Host(redisConfig.Host),
+				logattr.Port(redisConfig.Port),
+				logattr.RedisDB(redisConfig.DB),
+				logattr.Error(err),
+			)
+			os.Exit(1)
+		}
 		if err = redis.Ping(ctx); err != nil {
-			slog.Error("Failed to connect to Redis", logattr.Error(err))
+			slog.Error("Failed to connect to Redis",
+				logattr.Host(redisConfig.Host),
+				logattr.Port(redisConfig.Port),
+				logattr.RedisDB(redisConfig.DB),
+				logattr.Error(err),
+			)
 			os.Exit(1)
 		}
 	}

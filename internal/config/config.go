@@ -44,6 +44,11 @@ type RedisConfig struct {
 	DB       int    `mapstructure:"db"`
 }
 
+// AsynqConfig holds the configuration for the Asynq queue.
+type AsynqConfig struct {
+	QueueName string `mapstructure:"queue_name"`
+}
+
 // SchedulerConfig holds the configuration for the subscription scheduler.
 type SchedulerConfig struct {
 	Name          string        `mapstructure:"name"`
@@ -57,7 +62,6 @@ type SchedulerConfig struct {
 type QueueWorkerConfig struct {
 	Name          string   `mapstructure:"name"`
 	Concurrency   int      `mapstructure:"concurrency"`     // Number of concurrent workers.
-	QueueName     string   `mapstructure:"queue_name"`      // Name of the queue to process.
 	EnabledForEnv []string `mapstructure:"enabled_for_env"` // Environments where the worker is enabled.
 }
 
@@ -67,6 +71,7 @@ type Config struct {
 	Database    DatabaseConfig            `mapstructure:"database"`
 	JWT         services.JWTConfig        `mapstructure:"jwt"`
 	Redis       RedisConfig               `mapstructure:"redis"`
+	Asynq       AsynqConfig               `mapstructure:"asynq"`
 	Env         string                    `mapstructure:"env"` // Current application environment (e.g., development, production).
 	Scheduler   SchedulerConfig           `mapstructure:"scheduler"`
 	QueueWorker QueueWorkerConfig         `mapstructure:"queue_worker"`

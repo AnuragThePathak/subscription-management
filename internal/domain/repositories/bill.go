@@ -4,14 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/apperror"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/anuragthepathak/subscription-management/internal/lib"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 type BillRepository interface {
@@ -43,6 +44,8 @@ func NewBillRepository(ctx context.Context, db *mongo.Database) (BillRepository,
 	if _, err := collection.Indexes().CreateMany(ctx, indexes); err != nil {
 		return nil, fmt.Errorf("failed to create indexes: %w", err)
 	}
+	slog.Debug("Bill repository initialized and index verified")
+
 	return &billRepository{collection: collection}, nil
 }
 

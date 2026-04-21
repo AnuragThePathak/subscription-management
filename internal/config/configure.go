@@ -19,20 +19,31 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("server.port", 8080)
 	viper.SetDefault("server.request_timeout", "10s")
 	viper.SetDefault("server.tls.enabled", false)
+
 	viper.SetDefault("database.auth_source", "admin")
 	viper.SetDefault("database.port", 27017)
+
 	viper.SetDefault("redis.port", 6379)
 	viper.SetDefault("redis.db", 0)
+
+	viper.SetDefault("asynq.queue_name", "subscription")
+
+	viper.SetDefault("rate_limiter.app.period", "1m")
+
 	viper.SetDefault("jwt.access_timeout", "1")
 	viper.SetDefault("jwt.refresh_timeout", "72")
-	viper.SetDefault("rate_limiter.requests_per_minute", 3*60)
+
+	// Scheduler configuration
 	viper.SetDefault("scheduler.interval", "12h")
 	viper.SetDefault("scheduler.reminder_days", [3]int{1, 3, 7})
 	viper.SetDefault("scheduler.startup_delay", "15m")
-	viper.SetDefault("scheduler.enabled_for_env", []string{"development", "staging", "production"})
+	viper.SetDefault("scheduler.enabled_for_env", []string{"production", "staging"})
+
+	// Queue worker configuration
 	viper.SetDefault("queue_worker.concurrency", 2)
-	viper.SetDefault("queue_worker.queue_name", "default")
-	viper.SetDefault("queue_worker.enabled_for_env", []string{"development", "staging", "production"})
+	viper.SetDefault("queue_worker.enabled_for_env", []string{"production", "staging"})
+
+	// OpenTelemetry configuration
 	viper.SetDefault("otel.enabled", false)
 	viper.SetDefault("otel.service_name", "subscription-management")
 	viper.SetDefault("otel.jaeger_endpoint", "localhost:4317")
@@ -106,6 +117,21 @@ func (c *Config) Validate() error {
 	if c.Redis.DB < 0 {
 		missing = append(missing, "redis.db (must be 0 or greater)")
 	}
+
+	// Asynq configuration validation
+	if c.Asynq.QueueName == "" {
+		missing = append(missing, "asynq.queue_name")
+	}
+
+	// Rate limiter configuration validation
+	if c.RateLimiter.App.Rate == 0 {
+		missing = append(missing, "rate_limiter.app.rate")
+	}
+	if c.RateLimiter.App.Period == 0 {
+		missing = append(missing, "rate_limiter.app.period")
+	}
+
+	// JWT configuration validation
 	if c.JWT.AccessSecret == "" {
 		missing = append(missing, "jwt.access_secret")
 	}
@@ -115,12 +141,35 @@ func (c *Config) Validate() error {
 	if c.JWT.Issuer == "" {
 		missing = append(missing, "jwt.issuer")
 	}
-	if c.Redis.Host == "" {
-		missing = append(missing, "redis.host")
+
+	// Scheduler configuration validation
+	if c.Scheduler.Interval <= 0 {
+		missing = append(missing, "scheduler.interval (must be greater than 0)")
 	}
-	if c.RateLimiter.App.Rate == 0 {
-		missing = append(missing, "rate_limiter.app.rate")
+	if c.Scheduler.Name == "" {
+		missing = append(missing, "scheduler.name")
 	}
+	if c.Scheduler.ReminderDays == nil {
+		missing = append(missing, "scheduler.reminder_days")
+	}
+	if c.Scheduler.StartupDelay <= 0 {
+		missing = append(missing, "scheduler.startup_delay (must be greater than 0)")
+	}
+
+	// Queue worker configuration validation
+	if c.QueueWorker.Concurrency == 0 {
+		missing = append(missing, "queue_worker.concurrency")
+	}
+
+	// OpenTelemetry configuration validation
+	if c.OTel.ServiceName == "" {
+		missing = append(missing, "otel.service_name")
+	}
+	if c.OTel.JaegerEndpoint == "" {
+		missing = append(missing, "otel.jaeger_endpoint")
+	}
+
+	// Email configuration validation
 	if c.Email.SMTPHost == "" {
 		missing = append(missing, "email.smtp_host")
 	}

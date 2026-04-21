@@ -26,6 +26,8 @@ type QueueWorker struct {
 	emailSender         *notifications.EmailSender
 	redisClient         *redis.Client
 	server              *asynq.Server
+	queueName           string
+	concurrency         int
 	name                string
 }
 
@@ -58,6 +60,8 @@ func NewQueueWorker(
 		emailSender,
 		redisClient,
 		server,
+		queueName,
+		concurrency,
 		name,
 	}
 }
@@ -74,7 +78,15 @@ func (w *QueueWorker) Start() error {
 	mux.HandleFunc(RenewalTask, w.handleSubscriptionRenewal)
 	mux.HandleFunc(ExpirationTask, w.handleSubscriptionExpiration)
 
-	return w.server.Start(mux)
+	if err := w.server.Start(mux); err != nil {
+		return fmt.Errorf("failed to start queue worker: %w", err)
+	}
+	slog.Info("Queue worker event loop started",
+		logattr.WorkerName(w.name),
+		logattr.Queue(w.queueName),
+		logattr.Concurrency(w.concurrency),
+	)
+	return nil
 }
 
 // handleSubscriptionReminder processes a subscription reminder task.

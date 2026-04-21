@@ -62,6 +62,7 @@ type SubscriptionScheduler struct {
 	reminderDays        []int
 	startupDelay        time.Duration
 	queueName           string
+	name                string
 	tracer              trace.Tracer
 }
 
@@ -86,12 +87,21 @@ func NewSubscriptionScheduler(
 		reminderDays:        reminderDays,
 		startupDelay:        startupDelay,
 		queueName:           queueName,
+		name:                name,
 		tracer:              otel.Tracer(name),
 	}
 }
 
 // Start begins the scheduler loop.
 func (s *SubscriptionScheduler) Start(ctx context.Context) error {
+	slog.InfoContext(ctx, "Scheduler event loop started",
+		logattr.SchedulerName(s.name),
+		logattr.Queue(s.queueName),
+		logattr.Interval(s.interval),
+		logattr.StartupDelay(s.startupDelay),
+		logattr.ReminderDays(s.reminderDays),
+	)
+
 	delayTimer := time.NewTimer(s.startupDelay)
 	select {
 	case <-ctx.Done():
@@ -122,7 +132,10 @@ func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) {
 	ctx, span := s.tracer.Start(ctx, "Scheduler Tick: Poll Subscriptions")
 	defer span.End()
 
-	slog.InfoContext(ctx, "Polling subscriptions")
+	slog.InfoContext(ctx, "Polling subscriptions",
+		logattr.Queue(s.queueName),
+		logattr.Interval(s.interval),
+	)
 
 	var errs []error
 

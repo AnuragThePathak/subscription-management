@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/apperror"
@@ -41,6 +42,7 @@ func NewUserRepository(ctx context.Context, db *mongo.Database) (UserRepository,
 	if _, err := collection.Indexes().CreateOne(ctx, indexModel); err != nil {
 		return nil, fmt.Errorf("failed to create index for email field: %w", err)
 	}
+	slog.Debug("User repository initialized and index verified")
 
 	return &userRepository{
 		collection: collection,

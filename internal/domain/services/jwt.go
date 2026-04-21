@@ -2,8 +2,10 @@ package services
 
 import (
 	"fmt"
+	"log/slog"
 	"time"
 
+	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -29,6 +31,12 @@ type jwtService struct {
 
 // NewJWTService creates a new JWT service instance.
 func NewJWTService(config JWTConfig) JWTService {
+	slog.Info("JWT service created",
+		logattr.Issuer(config.Issuer),
+		logattr.AccessExpiryHours(config.AccessExpiryHours),
+		logattr.RefreshExpiryHours(config.RefreshExpiryHours),
+	)
+
 	return &jwtService{
 		config: config,
 	}

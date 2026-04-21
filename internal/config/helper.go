@@ -6,7 +6,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"time"
 
 	"github.com/anuragthepathak/subscription-management/internal/adapters"
 	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
@@ -187,16 +186,12 @@ func SetupLogger(env string, otelEnabled bool) error {
 }
 
 // NewRateLimit creates a rate limiter configuration.
-func NewRateLimit(rateConfig *RateLimiterConfig) *redis_rate.Limit {
+func NewRateLimit(rateConfig RateLimiterConfig) redis_rate.Limit {
 	if rateConfig.Burst == 0 {
 		rateConfig.Burst = rateConfig.Rate
 	}
-	if rateConfig.Period == 0 {
-		rateConfig.Period = time.Minute
-	}
-	slog.Info("Rate limiter configured", logattr.Rate(rateConfig.Rate), logattr.Burst(rateConfig.Burst), logattr.Period(rateConfig.Period))
 
-	return &redis_rate.Limit{
+	return redis_rate.Limit{
 		Rate:   rateConfig.Rate,
 		Burst:  rateConfig.Burst,
 		Period: rateConfig.Period,
@@ -205,11 +200,6 @@ func NewRateLimit(rateConfig *RateLimiterConfig) *redis_rate.Limit {
 
 // QueueRedisConfig returns Redis configuration for the task queue.
 func QueueRedisConfig(redisConfig RedisConfig) *asynq.RedisClientOpt {
-	slog.Debug("Queue Redis configuration initialized",
-		logattr.Host(redisConfig.Host),
-		logattr.Port(redisConfig.Port),
-		logattr.Database(fmt.Sprintf("%d", redisConfig.DB)),
-	)
 	return &asynq.RedisClientOpt{
 		Addr:     fmt.Sprintf("%s:%d", redisConfig.Host, redisConfig.Port),
 		Password: redisConfig.Password,

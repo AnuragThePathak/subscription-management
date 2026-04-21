@@ -7,13 +7,13 @@ import (
 	"github.com/anuragthepathak/subscription-management/internal/scheduler"
 )
 
-// SchedulerWorker wraps the QueueWorker to provide graceful shutdown capabilities.
-type SchedulerWorker struct {
+// QueueWorker wraps the QueueWorker to provide graceful shutdown capabilities.
+type QueueWorker struct {
 	Worker *scheduler.QueueWorker
 }
 
 // Shutdown gracefully shuts down the worker, respecting the provided context.
-func (w *SchedulerWorker) Shutdown(ctx context.Context) error {
+func (w *QueueWorker) Shutdown(ctx context.Context) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}

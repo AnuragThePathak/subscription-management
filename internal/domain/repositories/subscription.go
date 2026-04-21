@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/apperror"
@@ -52,6 +53,7 @@ func NewSubscriptionRepository(ctx context.Context, db *mongo.Database) (Subscri
 	if _, err := collection.Indexes().CreateMany(ctx, indexes); err != nil {
 		return nil, fmt.Errorf("failed to create indexes: %w", err)
 	}
+	slog.Debug("Subscription repository initialized and index verified")
 
 	return &subscriptionRepository{
 		collection: collection,

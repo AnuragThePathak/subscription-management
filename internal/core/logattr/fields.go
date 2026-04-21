@@ -41,13 +41,30 @@ const (
 	keyHost           = "host"
 	keyDatabase       = "database"
 	keyRedisDB        = "redis_db"
-	keyRate           = "rate"
-	keyBurst          = "burst"
-	keyPeriod         = "period"
 	keyQueue          = "queue"
 	keyRenewalDate    = "renewal_date"
 	keyConfigFile     = "config_file"
 	keyOtelEnabled    = "otel_enabled"
+	
+	// Rate Limiter
+	keyRate           = "rate"
+	keyBurst          = "burst"
+	keyPeriod         = "period"
+	keyPrefix         = "prefix"
+
+	// JWT
+	keyIssuer         = "issuer"
+	keyAccessExpiryHours  = "access_expiry_hours"
+	keyRefreshExpiryHours  = "refresh_expiry_hours"
+
+	// Scheduler
+	keySchedulerName  = "scheduler_name"
+	keyReminderDays   = "reminder_days"
+	keyStartupDelay   = "startup_delay"
+	keyEnabledForEnv  = "enabled_for_env"
+
+	// Queue Worker
+	keyWorkerName = "worker_name"
 )
 
 // UserID returns an slog.Attr for the user ID.
@@ -258,4 +275,49 @@ func ConfigFile(f string) slog.Attr {
 // OtelEnabled returns an slog.Attr for the OpenTelemetry enabled status.
 func OtelEnabled(b bool) slog.Attr {
 	return slog.Bool(keyOtelEnabled, b)
+}
+
+// Prefix returns an slog.Attr for the prefix.
+func Prefix(p string) slog.Attr {
+	return slog.String(keyPrefix, p)
+}
+
+// Issuer returns an slog.Attr for the issuer.
+func Issuer(i string) slog.Attr {
+	return slog.String(keyIssuer, i)
+}
+
+// AccessExpiryHours returns an slog.Attr for the access expiry hours.
+func AccessExpiryHours(h int) slog.Attr {
+	return slog.Int(keyAccessExpiryHours, h)
+}
+
+// RefreshExpiryHours returns an slog.Attr for the refresh expiry hours.
+func RefreshExpiryHours(h int) slog.Attr {
+	return slog.Int(keyRefreshExpiryHours, h)
+}
+
+// ReminderDays returns an slog.Attr for the reminder days.
+func ReminderDays(d []int) slog.Attr {
+	return slog.Any(keyReminderDays, d)
+}
+
+// StartupDelay returns an slog.Attr for the startup delay.
+func StartupDelay(d time.Duration) slog.Attr {
+	return slog.Duration(keyStartupDelay, d)
+}
+
+// EnabledForEnv returns an slog.Attr for the enabled environments.
+func EnabledForEnv(e []string) slog.Attr {
+	return slog.Any(keyEnabledForEnv, e)
+}
+
+// SchedulerName returns an slog.Attr for the scheduler name.
+func SchedulerName(n string) slog.Attr {
+	return slog.String(keySchedulerName, n)
+}
+
+// WorkerName returns an slog.Attr for the worker name.
+func WorkerName(n string) slog.Attr {
+	return slog.String(keyWorkerName, n)
 }

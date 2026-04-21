@@ -17,12 +17,19 @@ type RateLimiterService interface {
 
 type redisRateLimiter struct {
 	limiter *redis_rate.Limiter
-	limit   *redis_rate.Limit
+	limit   redis_rate.Limit
 	prefix  string
 }
 
 // NewRateLimiterService creates a new instance of the rate limiter service.
-func NewRateLimiterService(redisClient *redis_rate.Limiter, limit *redis_rate.Limit, prefix string) RateLimiterService {
+func NewRateLimiterService(redisClient *redis_rate.Limiter, limit redis_rate.Limit, prefix string) RateLimiterService {
+	slog.Info("Rate limiter service created",
+		logattr.Prefix(prefix),
+		logattr.Rate(limit.Rate),
+		logattr.Burst(limit.Burst),
+		logattr.Period(limit.Period),
+	)
+
 	return &redisRateLimiter{
 		limiter: redisClient,
 		limit:   limit,
@@ -33,7 +40,7 @@ func NewRateLimiterService(redisClient *redis_rate.Limiter, limit *redis_rate.Li
 // Allowed checks if the given IP has not exceeded the rate limit.
 func (r *redisRateLimiter) Allowed(ctx context.Context, ip string) (int, error) {
 	key := fmt.Sprintf("%s:%s", r.prefix, ip)
-	res, err := r.limiter.Allow(ctx, key, *r.limit)
+	res, err := r.limiter.Allow(ctx, key, r.limit)
 	if err != nil {
 		slog.ErrorContext(ctx, "Rate limiter error", logattr.Key(key), logattr.Error(err))
 		return 0, err

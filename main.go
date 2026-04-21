@@ -68,7 +68,6 @@ func main() {
 				logattr.Jaeger(otelConfig.JaegerEndpoint),
 				logattr.Error(err),
 			)
-			os.Exit(1)
 		}
 	} else {
 		slog.Warn("OpenTelemetry disabled",
@@ -124,6 +123,7 @@ func main() {
 		}
 	}
 
+	// Initialize business dependencies
 	redisRateLimiter := redis_rate.NewLimiter(redis.Client)
 
 	var userRepository repositories.UserRepository
@@ -144,31 +144,38 @@ func main() {
 		}
 	}
 
-	appRateLimiterService := services.NewRateLimiterService(
-		redisRateLimiter,
-		config.NewRateLimit(&cf.RateLimiter.App),
-		"app",
-	)
-	jwtService := services.NewJWTService(cf.JWT)
-
+	// Initialize business metrics adapter
 	var metricsPort *observability.OTelMetricsAdapter
 	if cf.OTel.Enabled {
 		metricsPort, err = observability.NewMetricsAdapter(cf.OTel)
 		if err != nil {
-			slog.Error("Failed to initialize business metrics adapter", logattr.Error(err))
-			os.Exit(1)
+			slog.Error("Failed to initialize business metrics adapter",
+				logattr.Env(cf.Env),
+				logattr.OtelEnabled(cf.OTel.Enabled),
+				logattr.Error(err))
 		}
 	} else {
 		// Noop instruments — domain layer calls are safe no-ops.
 		metricsPort = observability.NewNoOpMetricsAdapter()
+		slog.Info("Business metrics adapter creation skipped",
+			logattr.Env(cf.Env),
+			logattr.OtelEnabled(cf.OTel.Enabled),
+		)
 	}
+
+	appRateLimiterService := services.NewRateLimiterService(
+		redisRateLimiter,
+		config.NewRateLimit(cf.RateLimiter.App),
+		"app",
+	)
+	jwtService := services.NewJWTService(cf.JWT)
 
 	subscriptionService := services.NewSubscriptionService(subscriptionRepository, billRepository, metricsPort)
 	userService := services.NewUserService(userRepository, subscriptionService)
 	authService := services.NewAuthService(userService, jwtService)
 
 	var schedulerAdapter *adapters.Scheduler
-	var schedulerWorkerAdapter *adapters.SchedulerWorker
+	var schedulerWorkerAdapter *adapters.QueueWorker
 	{
 		if slices.Contains(cf.Scheduler.EnabledForEnv, cf.Env) {
 			sch := scheduler.NewSubscriptionScheduler(
@@ -178,24 +185,28 @@ func main() {
 				cf.Scheduler.Interval,
 				cf.Scheduler.ReminderDays,
 				cf.Scheduler.StartupDelay,
-				cf.QueueWorker.QueueName,
+				cf.Asynq.QueueName,
 				cf.Scheduler.Name,
 			)
 			go func() {
 				if startErr := sch.Start(ctx); startErr != nil && startErr != context.Canceled {
-					slog.Error("Scheduler failed", logattr.Error(startErr))
+					slog.Error("Scheduler failed",
+						logattr.SchedulerName(cf.Scheduler.Name),
+						logattr.Queue(cf.Asynq.QueueName),
+						logattr.Error(startErr),
+					)
 				}
 			}()
 
 			schedulerAdapter = &adapters.Scheduler{
 				Scheduler: sch,
 			}
-			slog.Info("Scheduler started",
-				logattr.Env(cf.Env),
-				logattr.Interval(cf.Scheduler.Interval),
-			)
 		} else {
-			slog.Info("Scheduler skipped", logattr.Env(cf.Env))
+			slog.Info("Scheduler skipped",
+				logattr.Env(cf.Env),
+				logattr.SchedulerName(cf.Scheduler.Name),
+				logattr.EnabledForEnv(cf.Scheduler.EnabledForEnv),
+			)
 		}
 
 		if slices.Contains(cf.QueueWorker.EnabledForEnv, cf.Env) {
@@ -206,24 +217,27 @@ func main() {
 				redis.Client,
 				config.QueueRedisConfig(cf.Redis),
 				cf.QueueWorker.Concurrency,
-				cf.QueueWorker.QueueName,
+				cf.Asynq.QueueName,
 				cf.QueueWorker.Name,
 			)
-			go func() {
-				if startErr := worker.Start(); startErr != nil && startErr != context.Canceled {
-					slog.Error("Queue worker failed", logattr.Error(startErr))
-				}
-			}()
+			if startErr := worker.Start(); startErr != nil && startErr != context.Canceled {
+				slog.Error("Queue worker failed",
+					logattr.WorkerName(cf.QueueWorker.Name),
+					logattr.Queue(cf.Asynq.QueueName),
+					logattr.Concurrency(cf.QueueWorker.Concurrency),
+					logattr.Error(startErr))
+				os.Exit(0)
+			}
 
-			schedulerWorkerAdapter = &adapters.SchedulerWorker{
+			schedulerWorkerAdapter = &adapters.QueueWorker{
 				Worker: worker,
 			}
-			slog.Info("Queue worker started",
-				logattr.Env(cf.Env),
-				logattr.Concurrency(cf.QueueWorker.Concurrency),
-			)
 		} else {
-			slog.Info("Queue worker skipped", logattr.Env(cf.Env))
+			slog.Info("Queue worker skipped",
+				logattr.Env(cf.Env),
+				logattr.WorkerName(cf.QueueWorker.Name),
+				logattr.EnabledForEnv(cf.QueueWorker.EnabledForEnv),
+			)
 		}
 	}
 

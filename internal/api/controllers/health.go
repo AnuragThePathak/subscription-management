@@ -38,7 +38,7 @@ func (c *healthController) readyz(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
 
-	podName := lib.GetPodIdentity()
+	podName := lib.Hostname()
 	if err := c.db.Ping(ctx); err != nil {
 		slog.Error("Database readiness probe failed",
 			logattr.PodName(podName),

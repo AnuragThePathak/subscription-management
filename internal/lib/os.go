@@ -1,24 +1,40 @@
 package lib
 
-import "os"
+import (
+	"os"
+	"sync"
+)
 
-// GetPodIdentity safely resolves the pod name regardless of environment
-func GetPodIdentity() string {
-	// Try the exact K8s Downward API first (The Enterprise Standard)
-	if name := os.Getenv("POD_NAME"); name != "" {
-		return name
-	}
+var (
+	hostname     string
+	hostnameOnce sync.Once
+)
 
-	// Fall back to the OS Hostname (Good for Docker/Local OS)
-	if name := os.Getenv("HOSTNAME"); name != "" {
-		return name
-	}
+// Hostname safely resolves the host name regardless of environment.
+// The result is cached after the first call to avoid repeated env reads and syscalls.
+func Hostname() string {
+	hostnameOnce.Do(func() {
+		// Try Kubernetes Downward API first
+		if name := os.Getenv("POD_NAME"); name != "" {
+			hostname = name
+			return
+		}
 
-	// Fallback to OS-provided hostname (Good for Local/VMs)
-	if name, err := os.Hostname(); err == nil && name != "" {
-		return name
-	}
+		// Fall back to the OS environment variable
+		if name := os.Getenv("HOSTNAME"); name != "" {
+			hostname = name
+			return
+		}
 
-	// Absolute worst-case fallback
-	return "unknown-instance"
+		// Fall back to OS-provided hostname via syscall
+		if name, err := os.Hostname(); err == nil && name != "" {
+			hostname = name
+			return
+		}
+
+		// Absolute worst-case fallback
+		hostname = "unknown-host"
+	})
+
+	return hostname
 }

@@ -8,8 +8,8 @@ type MetricConfig struct {
 
 // Config holds the configuration needed to initialize OpenTelemetry.
 type Config struct {
-	Enabled        bool   `mapstructure:"enabled"`         // Enable OpenTelemetry instrumentation.
-	ServiceName    string `mapstructure:"service_name"`    // Service name for traces and metrics.
+	Enabled        bool   `mapstructure:"enabled"`      // Enable OpenTelemetry instrumentation.
+	ServiceName    string `mapstructure:"service_name"` // Service name for traces and metrics.
 	Environment    string // Environment injected by main application config (not mapped from yaml).
 	JaegerEndpoint string `mapstructure:"jaeger_endpoint"` // OTLP gRPC endpoint for Jaeger.
 	Metrics        struct {

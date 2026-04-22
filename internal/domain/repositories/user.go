@@ -82,7 +82,7 @@ func (uc *userRepository) GetAll(ctx context.Context) ([]*models.User, error) {
 func (uc *userRepository) Update(ctx context.Context, user *models.User) (*models.User, error) {
 	filter := bson.M{"_id": user.ID}
 	update := bson.M{"$set": user}
-	
+
 	result, err := uc.collection.UpdateOne(ctx, filter, update)
 	if err != nil {
 		if mongo.IsDuplicateKeyError(err) {
@@ -93,11 +93,11 @@ func (uc *userRepository) Update(ctx context.Context, user *models.User) (*model
 		}
 		return nil, apperror.NewDBError(err)
 	}
-	
+
 	if result.MatchedCount == 0 {
 		return nil, apperror.NewNotFoundError("User not found")
 	}
-	
+
 	return user, nil
 }
 
@@ -109,10 +109,10 @@ func (uc *userRepository) Delete(ctx context.Context, id bson.ObjectID) error {
 		}
 		return apperror.NewDBError(err)
 	}
-	
+
 	if result.DeletedCount == 0 {
 		return apperror.NewNotFoundError("User not found")
 	}
-	
+
 	return nil
 }

@@ -12,7 +12,7 @@ import (
 // OTelMetricsAdapter bridges the strictly typed domain metrics interface
 // to the external OpenTelemetry Prometheus engine dynamically constructed from YAML configuration.
 type OTelMetricsAdapter struct {
-	created metric.Int64Counter
+	created  metric.Int64Counter
 	canceled metric.Int64Counter
 	active   metric.Int64UpDownCounter
 }

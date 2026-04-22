@@ -54,7 +54,7 @@ type SchedulerConfig struct {
 	Name          string        `mapstructure:"name"`
 	Interval      time.Duration `mapstructure:"interval"`        // Polling interval for reminders.
 	ReminderDays  []int         `mapstructure:"reminder_days"`   // Days before renewal to send reminders.
-	StartupDelay  time.Duration `mapstructure:"startup_delay"` // Delay before the first poll on startup.
+	StartupDelay  time.Duration `mapstructure:"startup_delay"`   // Delay before the first poll on startup.
 	EnabledForEnv []string      `mapstructure:"enabled_for_env"` // Environments where the scheduler is enabled.
 }
 

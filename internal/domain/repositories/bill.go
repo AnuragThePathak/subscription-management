@@ -39,7 +39,7 @@ func NewBillRepository(ctx context.Context, db *mongo.Database) (BillRepository,
 
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	
+
 	collection := db.Collection("bills")
 	if _, err := collection.Indexes().CreateMany(ctx, indexes); err != nil {
 		return nil, fmt.Errorf("failed to create indexes: %w", err)

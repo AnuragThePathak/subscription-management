@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/anuragthepathak/subscription-management/internal/core/appctx"
@@ -16,6 +17,8 @@ func WithSubscriptionID(next http.Handler) http.Handler {
 		subscriptionID := chi.URLParam(r, "subscriptionID")
 		if subscriptionID == "" {
 			// This middleware should only be used on routes that have the subscriptionID parameter.
+			slog.DebugContext(r.Context(),
+				"WithSubscriptionID middleware skipped: {subscriptionID} missing from URL")
 			next.ServeHTTP(w, r)
 			return
 		}

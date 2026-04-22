@@ -144,6 +144,9 @@ func main() {
 		}
 	}
 
+	// Transaction executor for running multiple operations in a single transaction
+	txnExecutor := repositories.NewTxnExecutor(database.Client)
+
 	// Initialize business metrics adapter
 	var metricsPort *observability.OTelMetricsAdapter
 	if cf.OTel.Enabled {
@@ -170,7 +173,12 @@ func main() {
 	)
 	jwtService := services.NewJWTService(cf.JWT)
 
-	subscriptionService := services.NewSubscriptionService(subscriptionRepository, billRepository, metricsPort)
+	subscriptionService := services.NewSubscriptionService(
+		txnExecutor.WithTransaction,
+		subscriptionRepository,
+		billRepository,
+		metricsPort,
+	)
 	userService := services.NewUserService(userRepository, subscriptionService)
 	authService := services.NewAuthService(userService, jwtService)
 

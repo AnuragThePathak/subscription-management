@@ -22,13 +22,6 @@ type SubscriptionServiceExternal interface {
 	CancelSubscription(context.Context, string, string) (*models.Subscription, error)
 }
 
-type SubscriptionMetrics interface {
-	IncSubscriptionsCreated(ctx context.Context)
-	IncSubscriptionsCanceled(ctx context.Context)
-	IncActiveSubscriptions(ctx context.Context)
-	DecActiveSubscriptions(ctx context.Context)
-}
-
 type SubscriptionServiceInternal interface {
 	RenewSubscriptionInternal(context.Context, bson.ObjectID) (*models.Subscription, error)
 	FetchUpcomingRenewalsInternal(context.Context, []int) ([]*models.Subscription, error)
@@ -44,18 +37,28 @@ type SubscriptionService interface {
 	SubscriptionServiceInternal
 }
 
+type SubscriptionMetrics interface {
+	IncSubscriptionsCreated(ctx context.Context)
+	IncSubscriptionsCanceled(ctx context.Context)
+	IncActiveSubscriptions(ctx context.Context)
+	DecActiveSubscriptions(ctx context.Context)
+}
+
 type subscriptionService struct {
+	withTransaction        repositories.TxnFn
 	subscriptionRepository repositories.SubscriptionRepository
 	billRepository         repositories.BillRepository
 	metrics                SubscriptionMetrics
 }
 
 func NewSubscriptionService(
+	txnFn repositories.TxnFn,
 	subscriptionRepository repositories.SubscriptionRepository,
 	billRepository repositories.BillRepository,
 	metrics SubscriptionMetrics,
 ) SubscriptionService {
 	return &subscriptionService{
+		txnFn,
 		subscriptionRepository,
 		billRepository,
 		metrics,
@@ -72,20 +75,20 @@ func (s *subscriptionService) CreateSubscription(ctx context.Context, subscripti
 
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	subscription.ValidTill = lib.CalcRenewalDate(today, subscription.Frequency)
 
+	subscription.ValidTill = lib.CalcRenewalDate(today, subscription.Frequency)
 	// Create the subscription
 	subscription.Status = models.Active
-
 	// Set default values
 	if subscription.Currency == "" {
 		subscription.Currency = models.USD
 	}
-
 	// Continue with validation
 	if err = subscription.Validate(); err != nil {
 		return nil, err
 	}
+	subscription.CreatedAt = now
+	subscription.UpdatedAt = now
 
 	// Create the bill
 	bill := &models.Bill{
@@ -99,16 +102,16 @@ func (s *subscriptionService) CreateSubscription(ctx context.Context, subscripti
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
-	_, err = s.billRepository.Create(ctx, bill)
-	if err != nil {
-		return nil, err
-	}
 
-	subscription.CreatedAt = now
-	subscription.UpdatedAt = now
-
-	res, err := s.subscriptionRepository.Create(ctx, subscription)
-	if err != nil {
+	var res *models.Subscription
+	if err = s.withTransaction(ctx, func(ctx context.Context) error {
+		_, txnErr := s.billRepository.Create(ctx, bill)
+		if txnErr != nil {
+			return txnErr
+		}
+		res, txnErr = s.subscriptionRepository.Create(ctx, subscription)
+		return txnErr
+	}); err != nil {
 		return nil, err
 	}
 
@@ -118,6 +121,7 @@ func (s *subscriptionService) CreateSubscription(ctx context.Context, subscripti
 	slog.InfoContext(ctx, "Subscription created",
 		logattr.SubscriptionID(res.ID.Hex()),
 		logattr.SubscriptionName(subscription.Name),
+		logattr.ValidTill(subscription.ValidTill),
 	)
 	return res, nil
 }
@@ -191,7 +195,9 @@ func (s *subscriptionService) DeleteSubscription(ctx context.Context, id string,
 		return err
 	}
 
-	slog.InfoContext(ctx, "Subscription deleted")
+	slog.InfoContext(ctx, "Subscription deleted",
+		logattr.ValidTill(subscription.ValidTill),
+	)
 	return nil
 }
 
@@ -226,45 +232,49 @@ func (s *subscriptionService) CancelSubscription(ctx context.Context, id string,
 	}
 
 	now := time.Now()
-	if latestBill.StartDate.After(now) && latestBill.Status == models.Paid {
-		// Refund the bill
-		latestBill.Status = models.Refunded
-		latestBill.UpdatedAt = now
-
-		_, err = s.billRepository.Update(ctx, latestBill)
-		if err != nil {
-			return nil, err
-		}
-
-		// Update the subscription validity
-		activeBill, err := s.billRepository.GetRecentBill(ctx, subscription.ID)
-		if err != nil {
-			return nil, err
-		}
-		if activeBill != nil && activeBill.Status == models.Paid {
-			subscription.ValidTill = activeBill.EndDate
-		}
-	}
-
 	// Update the subscription status
 	subscription.Status = models.Canceled
 	subscription.UpdatedAt = now
 
-	res, err := s.subscriptionRepository.Update(ctx, subscription)
-	if err != nil {
+	var res *models.Subscription
+	if err = s.withTransaction(ctx, func(ctx context.Context) error {
+		if latestBill.StartDate.After(now) && latestBill.Status == models.Paid {
+			// Refund the bill
+			latestBill.Status = models.Refunded
+			latestBill.UpdatedAt = now
+
+			_, txnErr := s.billRepository.Update(ctx, latestBill)
+			if txnErr != nil {
+				return txnErr
+			}
+
+			// Update the subscription validity
+			activeBill, txnErr := s.billRepository.GetRecentBill(ctx, subscription.ID)
+			if txnErr != nil {
+				return txnErr
+			}
+			if activeBill != nil && activeBill.Status == models.Paid {
+				subscription.ValidTill = activeBill.EndDate
+			}
+		}
+
+		var txnErr error
+		res, txnErr = s.subscriptionRepository.Update(ctx, subscription)
+		return txnErr
+	}); err != nil {
 		return nil, err
 	}
 
 	s.metrics.IncSubscriptionsCanceled(ctx)
 	s.metrics.DecActiveSubscriptions(ctx)
 
-	slog.InfoContext(ctx, "Subscription canceled")
+	slog.InfoContext(ctx, "Subscription canceled",
+		logattr.ValidTill(res.ValidTill),
+	)
 	return res, nil
 }
 
 func (s *subscriptionService) RenewSubscriptionInternal(ctx context.Context, id bson.ObjectID) (*models.Subscription, error) {
-	slog.DebugContext(ctx, "Renewing subscription")
-
 	subscription, err := s.subscriptionRepository.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -295,6 +305,9 @@ func (s *subscriptionService) RenewSubscriptionInternal(ctx context.Context, id 
 	// Create a new bill
 	newStartDate := latestBill.EndDate
 	newValidity := lib.CalcRenewalDate(newStartDate, subscription.Frequency)
+	subscription.ValidTill = newValidity
+	subscription.UpdatedAt = now
+
 	bill := &models.Bill{
 		ID:             bson.NewObjectID(),
 		Amount:         subscription.Price,
@@ -306,16 +319,24 @@ func (s *subscriptionService) RenewSubscriptionInternal(ctx context.Context, id 
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
-	_, err = s.billRepository.Create(ctx, bill)
-	if err != nil {
+
+	var res *models.Subscription
+	if err = s.withTransaction(ctx, func(ctx context.Context) error {
+		_, txnErr := s.billRepository.Create(ctx, bill)
+		if txnErr != nil {
+			return txnErr
+		}
+		// Update the subscription
+		res, txnErr = s.subscriptionRepository.Update(ctx, subscription)
+		return txnErr
+	}); err != nil {
 		return nil, err
 	}
 
-	// Update the subscription
-	subscription.ValidTill = newValidity
-	subscription.UpdatedAt = now
-
-	return s.subscriptionRepository.Update(ctx, subscription)
+	slog.InfoContext(ctx, "Subscription renewed",
+		logattr.ValidTill(res.ValidTill),
+	)
+	return res, nil
 }
 
 func (s *subscriptionService) FetchUpcomingRenewalsInternal(ctx context.Context, daysAhead []int) ([]*models.Subscription, error) {
@@ -344,7 +365,6 @@ func (s *subscriptionService) FetchCanceledExpiredSubscriptionsInternal(ctx cont
 }
 
 func (s *subscriptionService) MarkCanceledSubscriptionAsExpiredInternal(ctx context.Context, id bson.ObjectID) error {
-	slog.DebugContext(ctx, "Marking canceled subscription as expired")
 	subscription, err := s.subscriptionRepository.GetByID(ctx, id)
 	if err != nil {
 		return err
@@ -358,5 +378,8 @@ func (s *subscriptionService) MarkCanceledSubscriptionAsExpiredInternal(ctx cont
 	if err != nil {
 		return err
 	}
+	slog.InfoContext(ctx, "Canceled subscription marked as expired",
+		logattr.ValidTill(subscription.ValidTill),
+	)
 	return nil
 }

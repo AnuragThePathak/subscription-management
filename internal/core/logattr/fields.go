@@ -71,6 +71,9 @@ const (
 	keyTLSEnabled = "tls_enabled"
 	keyLimitBytes = "limit_bytes"
 
+	// Domain
+	keyUpdatedFields = "updated_fields"
+
 	// Miscellaneous
 	keyPodName = "pod_name"
 )
@@ -348,4 +351,9 @@ func LimitBytes(b int64) slog.Attr {
 // TLSEnabled returns an slog.Attr for the TLS enabled status.
 func TLSEnabled(b bool) slog.Attr {
 	return slog.Bool(keyTLSEnabled, b)
+}
+
+// UpdatedFields returns an slog.Attr for the updated fields.
+func UpdatedFields(fields []string) slog.Attr {
+	return slog.Any(keyUpdatedFields, fields)
 }

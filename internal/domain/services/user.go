@@ -32,6 +32,12 @@ type UserService interface {
 	UserServiceInternal
 }
 
+const (
+	userFieldName     = "name"
+	userFieldEmail    = "email"
+	userFieldPassword = "password"
+)
+
 type userService struct {
 	userRepository              repositories.UserRepository
 	subscriptionServiceInternal SubscriptionServiceInternal
@@ -132,19 +138,26 @@ func (us *userService) UpdateUser(ctx context.Context, id string, updateReq *mod
 			return nil, apperror.NewConflictError("Email already in use")
 		}
 		if emailErr != nil {
-			var appErr apperror.AppError
-			if !errors.As(emailErr, &appErr) || appErr.Code() != apperror.ErrNotFound {
+			if appErr, ok := errors.AsType[apperror.AppError](emailErr); ok {
+				if appErr.Code() != apperror.ErrNotFound {
+					return nil, appErr
+				}
+			} else {
 				return nil, emailErr
 			}
 		}
 	}
 
+	var updatedFields []string
+
 	// Update fields
-	if updateReq.Name != "" {
+	if updateReq.Name != "" && updateReq.Name != existingUser.Name {
 		existingUser.Name = updateReq.Name
+		updatedFields = append(updatedFields, userFieldName)
 	}
-	if updateReq.Email != "" {
+	if updateReq.Email != "" && updateReq.Email != existingUser.Email {
 		existingUser.Email = updateReq.Email
+		updatedFields = append(updatedFields, userFieldEmail)
 	}
 
 	// Handle password update with verification
@@ -161,11 +174,12 @@ func (us *userService) UpdateUser(ctx context.Context, id string, updateReq *mod
 		}
 
 		// Hash new password
-		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(updateReq.NewPassword), 10)
-		if err != nil {
-			return nil, apperror.NewInternalError(err)
+		hashedPassword, hashErr := bcrypt.GenerateFromPassword([]byte(updateReq.NewPassword), 10)
+		if hashErr != nil {
+			return nil, apperror.NewInternalError(hashErr)
 		}
 		existingUser.Password = string(hashedPassword)
+		updatedFields = append(updatedFields, userFieldPassword)
 	}
 
 	existingUser.UpdatedAt = time.Now()
@@ -176,7 +190,7 @@ func (us *userService) UpdateUser(ctx context.Context, id string, updateReq *mod
 		return nil, err
 	}
 
-	slog.DebugContext(ctx, "User updated")
+	slog.InfoContext(ctx, "User updated", logattr.UpdatedFields(updatedFields))
 	return result, nil
 }
 

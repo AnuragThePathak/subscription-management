@@ -69,6 +69,7 @@ const (
 	// HTTP
 	keyTimeout    = "request_timeout"
 	keyTLSEnabled = "tls_enabled"
+	keyLimitBytes = "limit_bytes"
 
 	// Miscellaneous
 	keyPodName = "pod_name"
@@ -337,6 +338,11 @@ func PodName(n string) slog.Attr {
 // Timeout returns an slog.Attr for the timeout duration.
 func Timeout(d time.Duration) slog.Attr {
 	return slog.Duration(keyTimeout, d)
+}
+
+// LimitBytes returns an slog.Attr for the limit bytes.
+func LimitBytes(b int64) slog.Attr {
+	return slog.Int64(keyLimitBytes, b)
 }
 
 // TLSEnabled returns an slog.Attr for the TLS enabled status.

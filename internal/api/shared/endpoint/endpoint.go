@@ -14,6 +14,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// maxBodyBytes defines the maximum allowed size for a JSON request body (1MB) to prevent abuse.
+const maxBodyBytes = 1 * 1024 * 1024
+
 // RequestHandler holds shared dependencies for processing HTTP requests.
 type RequestHandler struct {
 	validate *validator.Validate
@@ -29,7 +32,20 @@ func (h *RequestHandler) readRequestBody(w http.ResponseWriter, r *http.Request,
 	if bodyObj == nil {
 		return true
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	if err := json.NewDecoder(r.Body).Decode(bodyObj); err != nil {
+		if maxBytesErr, ok := errors.AsType[*http.MaxBytesError](err); ok {
+			slog.WarnContext(r.Context(), "Request body too large",
+				logattr.Method(r.Method),
+				logattr.Path(r.URL.Path),
+				logattr.LimitBytes(maxBytesErr.Limit),
+			)
+			WriteAPIResponse(w, http.StatusRequestEntityTooLarge, map[string]string{
+				"error": "Request body too large",
+			})
+			return false
+		}
+
 		slog.WarnContext(r.Context(), "Failed to decode request body",
 			logattr.Method(r.Method),
 			logattr.Path(r.URL.Path),
@@ -135,6 +151,6 @@ func WriteAPIResponse(w http.ResponseWriter, statusCode int, res any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	if res != nil {
-		json.NewEncoder(w).Encode(res)
+		_ = json.NewEncoder(w).Encode(res)
 	}
 }

@@ -82,8 +82,7 @@ func (r *billRepository) GetRecentBill(ctx context.Context, subscriptionID bson.
 func (r *billRepository) Update(ctx context.Context, bill *models.Bill) (*models.Bill, error) {
 	// Update the bill in the collection
 	filter := bson.M{"_id": bill.ID}
-	update := bson.M{"$set": bill}
-	res, err := r.collection.UpdateOne(ctx, filter, update)
+	res, err := r.collection.ReplaceOne(ctx, filter, bill)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, apperror.NewTimeoutError(err)

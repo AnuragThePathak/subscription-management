@@ -81,9 +81,8 @@ func (uc *userRepository) GetAll(ctx context.Context) ([]*models.User, error) {
 
 func (uc *userRepository) Update(ctx context.Context, user *models.User) (*models.User, error) {
 	filter := bson.M{"_id": user.ID}
-	update := bson.M{"$set": user}
 
-	result, err := uc.collection.UpdateOne(ctx, filter, update)
+	result, err := uc.collection.ReplaceOne(ctx, filter, user)
 	if err != nil {
 		if mongo.IsDuplicateKeyError(err) {
 			return nil, apperror.NewConflictError("Email already exists")

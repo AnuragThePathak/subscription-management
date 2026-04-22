@@ -144,9 +144,8 @@ func (r *subscriptionRepository) GetCanceledExpiredSubscriptions(ctx context.Con
 
 func (r *subscriptionRepository) Update(ctx context.Context, subscription *models.Subscription) (*models.Subscription, error) {
 	filter := bson.M{"_id": subscription.ID}
-	update := bson.M{"$set": subscription}
 
-	res, err := r.collection.UpdateOne(ctx, filter, update)
+	res, err := r.collection.ReplaceOne(ctx, filter, subscription)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, apperror.NewTimeoutError(err)

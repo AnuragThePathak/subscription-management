@@ -2,24 +2,32 @@ package middlewares
 
 import (
 	"log/slog"
-	"net"
 	"net/http"
 	"strconv"
-	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/endpoint"
 	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/anuragthepathak/subscription-management/internal/domain/services"
+	"github.com/anuragthepathak/subscription-management/internal/lib"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
 
+// failOpenLogInterval specifies the minimum time in seconds between consecutive
+// error logs when the rate limiter service fails. This prevents log flooding
+// while the middleware is failing open.
+const failOpenLogInterval = 60
+
 // RateLimiter returns a middleware that limits requests by IP address.
 func RateLimiter(rateLimiterService services.RateLimiterService) func(http.Handler) http.Handler {
+	var lastErrLog atomic.Int64
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Get the client's IP address.
-			ip, err := getClientIP(r)
+			ip, err := lib.ClientIP(r)
 			if err != nil {
 				slog.WarnContext(r.Context(), "Failed to get client IP",
 					logattr.Error(err),
@@ -37,13 +45,20 @@ func RateLimiter(rateLimiterService services.RateLimiterService) func(http.Handl
 			if err != nil {
 				span := trace.SpanFromContext(r.Context())
 				span.RecordError(err)
-				span.SetStatus(codes.Error, "Rate limiter service error")
+				span.SetStatus(codes.Error, "Rate limiter service error. Failing OPEN")
 
-				slog.ErrorContext(r.Context(), "Rate limiter service error",
-					logattr.IP(ip),
-					logattr.Error(err),
-				)
-				endpoint.WriteAPIResponse(w, http.StatusInternalServerError, nil)
+				now := time.Now().Unix()
+				last := lastErrLog.Load()
+				if now-last > failOpenLogInterval { // Log at most once per failOpenLogInterval
+					if lastErrLog.CompareAndSwap(last, now) {
+						slog.ErrorContext(r.Context(), "Rate limiter service error. Failing OPEN",
+							logattr.IP(ip),
+							logattr.Error(err),
+						)
+					}
+				}
+
+				next.ServeHTTP(w, r)
 				return
 			}
 
@@ -57,6 +72,8 @@ func RateLimiter(rateLimiterService services.RateLimiterService) func(http.Handl
 				slog.WarnContext(r.Context(), "Rate limit exceeded",
 					logattr.IP(ip),
 					logattr.Remaining(remaining),
+					logattr.Method(r.Method),
+					logattr.Path(r.URL.Path),
 				)
 
 				endpoint.WriteAPIResponse(w, http.StatusTooManyRequests, map[string]string{
@@ -69,35 +86,4 @@ func RateLimiter(rateLimiterService services.RateLimiterService) func(http.Handl
 			next.ServeHTTP(w, r)
 		})
 	}
-}
-
-// getClientIP extracts the client IP from the request.
-func getClientIP(r *http.Request) (string, error) {
-	// Try X-Forwarded-For header first.
-	ip := r.Header.Get("X-Forwarded-For")
-	if ip != "" {
-		// X-Forwarded-For can contain multiple IPs; use the first one (client).
-		ips := strings.Split(ip, ",")
-		ip = strings.TrimSpace(ips[0])
-
-		if parsedIP := net.ParseIP(ip); parsedIP != nil {
-			return ip, nil
-		}
-	}
-
-	// Try X-Real-IP header.
-	ip = r.Header.Get("X-Real-IP")
-	if ip != "" {
-		if parsedIP := net.ParseIP(ip); parsedIP != nil {
-			return ip, nil
-		}
-	}
-
-	// Fall back to RemoteAddr.
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return "", err
-	}
-
-	return ip, nil
 }

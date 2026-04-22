@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -10,6 +11,8 @@ import (
 	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/anuragthepathak/subscription-management/internal/domain/services"
+	"github.com/anuragthepathak/subscription-management/internal/lib"
+	"github.com/golang-jwt/jwt/v5"
 	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -33,7 +36,16 @@ func Authentication(jwtService services.JWTService) func(next http.Handler) http
 			tokenString := parts[1]
 			claims, err := jwtService.ValidateToken(tokenString, models.AccessToken)
 			if err != nil {
-				slog.WarnContext(r.Context(), "Invalid token", logattr.Error(err))
+				if errors.Is(err, jwt.ErrTokenExpired) {
+					slog.DebugContext(r.Context(), "Token expired",
+						logattr.Error(err),
+					)
+				} else {
+					ip, _ := lib.ClientIP(r)
+					slog.WarnContext(r.Context(), "Invalid token",
+						logattr.IP(ip),
+						logattr.Error(err))
+				}
 				endpoint.WriteAPIResponse(w, http.StatusUnauthorized, map[string]string{"error": "Invalid token"})
 				return
 			}

@@ -13,7 +13,10 @@ import (
 // JWTService handles JWT token operations.
 type JWTService interface {
 	GenerateTokens(userID, email string) (*models.TokenResponse, error)
-	ValidateToken(tokenString string, tokenType models.TokenType) (*models.Claims, error)
+	ValidateToken(
+		tokenString string,
+		tokenType models.TokenType,
+	) (*models.Claims, error)
 }
 
 // JWTConfig holds the JWT token generation and validation settings.
@@ -42,53 +45,36 @@ func NewJWTService(config JWTConfig) JWTService {
 	}
 }
 
-// GenerateTokens creates both access and refresh tokens for a user.
-func (s *jwtService) GenerateTokens(userID, email string) (*models.TokenResponse, error) {
-	// Generate access token.
-	accessExpiry := time.Now().Add(time.Hour * time.Duration(s.config.AccessExpiryHours))
-	accessToken, err := s.generateToken(userID, email, models.AccessToken, accessExpiry)
-	if err != nil {
-		return nil, err
+// getSecret returns the appropriate secret based on the token type.
+func (s *jwtService) getSecret(tokenType models.TokenType) string {
+	if tokenType == models.AccessToken {
+		return s.config.AccessSecret
 	}
-
-	// Generate refresh token.
-	refreshExpiry := time.Now().Add(time.Hour * time.Duration(s.config.RefreshExpiryHours))
-	refreshToken, err := s.generateToken(userID, email, models.RefreshToken, refreshExpiry)
-	if err != nil {
-		return nil, err
-	}
-
-	return &models.TokenResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		ExpiresAt:    accessExpiry,
-	}, nil
+	return s.config.RefreshSecret
 }
 
 // generateToken creates a new signed JWT token.
-func (s *jwtService) generateToken(userID, email string, tokenType models.TokenType, expiry time.Time) (string, error) {
+func (s *jwtService) generateToken(
+	userID,
+	email string,
+	tokenType models.TokenType,
+	expiry time.Time,
+) (string, error) {
+	now := time.Now()
 	claims := models.Claims{
 		UserID: userID,
 		Email:  email,
 		Type:   tokenType,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expiry),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			NotBefore: jwt.NewNumericDate(time.Now()),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
 			Issuer:    s.config.Issuer,
 		},
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	// Choose the appropriate secret based on token type.
-	var secret string
-	if tokenType == models.AccessToken {
-		secret = s.config.AccessSecret
-	} else {
-		secret = s.config.RefreshSecret
-	}
-
+	secret := s.getSecret(tokenType)
 	// Sign the token with the secret.
 	tokenString, err := token.SignedString([]byte(secret))
 	if err != nil {
@@ -98,25 +84,51 @@ func (s *jwtService) generateToken(userID, email string, tokenType models.TokenT
 	return tokenString, nil
 }
 
+// GenerateTokens creates both access and refresh tokens for a user.
+func (s *jwtService) GenerateTokens(userID, email string) (*models.TokenResponse, error) {
+	// Generate access token.
+	accessExpiry := time.Now().Add(time.Hour * time.Duration(s.config.AccessExpiryHours))
+	accessToken, err := s.generateToken(
+		userID,
+		email,
+		models.AccessToken,
+		accessExpiry,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate access token: %w", err)
+	}
+
+	// Generate refresh token.
+	refreshExpiry := time.Now().Add(time.Hour * time.Duration(s.config.RefreshExpiryHours))
+	refreshToken, err := s.generateToken(
+		userID,
+		email,
+		models.RefreshToken,
+		refreshExpiry,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
+	}
+
+	return &models.TokenResponse{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresAt:    accessExpiry,
+	}, nil
+}
+
 // ValidateToken validates a token and returns the claims if valid.
 func (s *jwtService) ValidateToken(tokenString string, tokenType models.TokenType) (*models.Claims, error) {
 	// Choose the appropriate secret based on token type.
-	var secret string
-	if tokenType == models.AccessToken {
-		secret = s.config.AccessSecret
-	} else {
-		secret = s.config.RefreshSecret
-	}
-
+	secret := s.getSecret(tokenType)
 	// Parse the token.
-	token, err := jwt.ParseWithClaims(tokenString, &models.Claims{}, func(token *jwt.Token) (any, error) {
-		// Validate the algorithm.
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-		return []byte(secret), nil
-	})
-
+	token, err := jwt.ParseWithClaims(tokenString, &models.Claims{},
+		func(token *jwt.Token) (any, error) {
+			return []byte(secret), nil
+		},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Name}),
+		jwt.WithIssuer(s.config.Issuer),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -126,10 +138,14 @@ func (s *jwtService) ValidateToken(tokenString string, tokenType models.TokenTyp
 	if !ok || !token.Valid {
 		return nil, fmt.Errorf("invalid token")
 	}
-
 	// Verify token type.
 	if claims.Type != tokenType {
-		return nil, fmt.Errorf("invalid token type")
+		return nil, fmt.Errorf(
+			"invalid token type: expected %s, got %s",
+			tokenType,
+			claims.Type,
+		)
 	}
+
 	return claims, nil
 }

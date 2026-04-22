@@ -312,7 +312,12 @@ func main() {
 		}
 	}
 
-	slog.Info("Service ready", logattr.StartupTime(time.Since(startupStart)))
+	slog.Info("Service ready",
+		logattr.StartupTime(time.Since(startupStart)),
+		logattr.Port(cf.Server.Port),
+		logattr.Timeout(cf.Server.RequestTimeout),
+		logattr.TLSEnabled(cf.Server.TLS.Enabled),
+	)
 
 	apiServer.StartWithGracefulShutdown(
 		ctx,

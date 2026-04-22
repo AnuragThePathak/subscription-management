@@ -45,26 +45,33 @@ const (
 	keyRenewalDate    = "renewal_date"
 	keyConfigFile     = "config_file"
 	keyOtelEnabled    = "otel_enabled"
-	
+
 	// Rate Limiter
-	keyRate           = "rate"
-	keyBurst          = "burst"
-	keyPeriod         = "period"
-	keyPrefix         = "prefix"
+	keyRate   = "rate"
+	keyBurst  = "burst"
+	keyPeriod = "period"
+	keyPrefix = "prefix"
 
 	// JWT
-	keyIssuer         = "issuer"
+	keyIssuer             = "issuer"
 	keyAccessExpiryHours  = "access_expiry_hours"
-	keyRefreshExpiryHours  = "refresh_expiry_hours"
+	keyRefreshExpiryHours = "refresh_expiry_hours"
 
 	// Scheduler
-	keySchedulerName  = "scheduler_name"
-	keyReminderDays   = "reminder_days"
-	keyStartupDelay   = "startup_delay"
-	keyEnabledForEnv  = "enabled_for_env"
+	keySchedulerName = "scheduler_name"
+	keyReminderDays  = "reminder_days"
+	keyStartupDelay  = "startup_delay"
+	keyEnabledForEnv = "enabled_for_env"
 
 	// Queue Worker
 	keyWorkerName = "worker_name"
+
+	// HTTP
+	keyTimeout    = "request_timeout"
+	keyTLSEnabled = "tls_enabled"
+
+	// Miscellaneous
+	keyPodName = "pod_name"
 )
 
 // UserID returns an slog.Attr for the user ID.
@@ -320,4 +327,19 @@ func SchedulerName(n string) slog.Attr {
 // WorkerName returns an slog.Attr for the worker name.
 func WorkerName(n string) slog.Attr {
 	return slog.String(keyWorkerName, n)
+}
+
+// PodName returns an slog.Attr for the pod name.
+func PodName(n string) slog.Attr {
+	return slog.String(keyPodName, n)
+}
+
+// Timeout returns an slog.Attr for the timeout duration.
+func Timeout(d time.Duration) slog.Attr {
+	return slog.Duration(keyTimeout, d)
+}
+
+// TLSEnabled returns an slog.Attr for the TLS enabled status.
+func TLSEnabled(b bool) slog.Attr {
+	return slog.Bool(keyTLSEnabled, b)
 }

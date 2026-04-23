@@ -42,10 +42,8 @@ func (r *redisRateLimiter) Allowed(ctx context.Context, ip string) (int, error) 
 	key := fmt.Sprintf("%s:%s", r.prefix, ip)
 	res, err := r.limiter.Allow(ctx, key, r.limit)
 	if err != nil {
-		slog.ErrorContext(ctx, "Rate limiter error", logattr.Key(key), logattr.Error(err))
-		return 0, err
+		return 0, fmt.Errorf("error checking rate limit: %w", err)
 	}
 
-	slog.DebugContext(ctx, "Rate limiter check", logattr.Key(key), logattr.Remaining(res.Remaining))
 	return res.Remaining, nil
 }

@@ -90,6 +90,6 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 			WithLogAttributes(logattr.UserID(user.ID.Hex()))
 	}
 
-	slog.DebugContext(ctx, "Token refreshed", logattr.UserID(user.ID.Hex()))
+	slog.InfoContext(ctx, "Token refreshed", logattr.UserID(user.ID.Hex()))
 	return tokens, nil
 }

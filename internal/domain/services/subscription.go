@@ -45,7 +45,7 @@ type SubscriptionMetrics interface {
 }
 
 type subscriptionService struct {
-	withTransaction        repositories.TxnFn
+	runTx                  repositories.TxnFn
 	subscriptionRepository repositories.SubscriptionRepository
 	billRepository         repositories.BillRepository
 	metrics                SubscriptionMetrics
@@ -104,14 +104,15 @@ func (s *subscriptionService) CreateSubscription(ctx context.Context, subscripti
 	}
 
 	var res *models.Subscription
-	if err = s.withTransaction(ctx, func(ctx context.Context) error {
+	err = s.runTx(ctx, func(ctx context.Context) error {
 		_, txnErr := s.billRepository.Create(ctx, bill)
 		if txnErr != nil {
 			return txnErr
 		}
 		res, txnErr = s.subscriptionRepository.Create(ctx, subscription)
 		return txnErr
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
 
@@ -237,7 +238,7 @@ func (s *subscriptionService) CancelSubscription(ctx context.Context, id string,
 	subscription.UpdatedAt = now
 
 	var res *models.Subscription
-	if err = s.withTransaction(ctx, func(ctx context.Context) error {
+	err = s.runTx(ctx, func(ctx context.Context) error {
 		if latestBill.StartDate.After(now) && latestBill.Status == models.Paid {
 			// Refund the bill
 			latestBill.Status = models.Refunded
@@ -261,7 +262,8 @@ func (s *subscriptionService) CancelSubscription(ctx context.Context, id string,
 		var txnErr error
 		res, txnErr = s.subscriptionRepository.Update(ctx, subscription)
 		return txnErr
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
 
@@ -321,7 +323,7 @@ func (s *subscriptionService) RenewSubscriptionInternal(ctx context.Context, id 
 	}
 
 	var res *models.Subscription
-	if err = s.withTransaction(ctx, func(ctx context.Context) error {
+	err = s.runTx(ctx, func(ctx context.Context) error {
 		_, txnErr := s.billRepository.Create(ctx, bill)
 		if txnErr != nil {
 			return txnErr
@@ -329,7 +331,8 @@ func (s *subscriptionService) RenewSubscriptionInternal(ctx context.Context, id 
 		// Update the subscription
 		res, txnErr = s.subscriptionRepository.Update(ctx, subscription)
 		return txnErr
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
 

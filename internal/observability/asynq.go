@@ -44,13 +44,16 @@ func AsynqTracingMiddleware(serviceName string) asynq.MiddlewareFunc {
 				trace.WithSpanKind(trace.SpanKindConsumer),
 				trace.WithAttributes(
 					semconv.MessagingSystemKey.String("asynq"),
-					semconv.MessagingOperationName("process"),
-					semconv.MessagingDestinationNameKey.String(task.Type()),
+					semconv.MessagingOperationTypeProcess,
+					traceattr.TaskType(task.Type()),
 				),
 			)
 			defer span.End()
 			if taskID, ok := asynq.GetTaskID(ctx); ok {
-				span.SetAttributes(traceattr.TaskID(taskID))
+				span.SetAttributes(semconv.MessagingMessageID(taskID))
+			}
+			if queue, ok := asynq.GetQueueName(ctx); ok {
+				span.SetAttributes(semconv.MessagingDestinationName(queue))
 			}
 
 			// Inject Task type for logs
@@ -72,13 +75,14 @@ func AsynqTracingMiddleware(serviceName string) asynq.MiddlewareFunc {
 }
 
 // AsynqProducerAttributes returns the standard OTel attributes for publishing to an Asynq queue.
-func AsynqProducerAttributes(taskName string) []trace.SpanStartOption {
+func AsynqProducerAttributes(taskType string, queue string) []trace.SpanStartOption {
 	return []trace.SpanStartOption{
 		trace.WithSpanKind(trace.SpanKindProducer),
 		trace.WithAttributes(
 			semconv.MessagingSystemKey.String("asynq"),
-			semconv.MessagingOperationName("publish"),
-			semconv.MessagingDestinationNameKey.String(taskName),
+			semconv.MessagingOperationTypeSend,
+			semconv.MessagingDestinationName(queue),
+			traceattr.TaskType(taskType),
 		),
 	}
 }

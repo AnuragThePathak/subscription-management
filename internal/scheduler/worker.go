@@ -94,6 +94,7 @@ func (w *QueueWorker) handleSubscriptionReminder(ctx context.Context, task *asyn
 	var payload ReminderPayload
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
 		slog.ErrorContext(ctx, "Failed to unmarshal payload",
+			logattr.Queue(w.queueName),
 			logattr.Error(err),
 		)
 		return fmt.Errorf("failed to unmarshal task payload: %w", err)
@@ -107,6 +108,7 @@ func (w *QueueWorker) handleSubscriptionReminder(ctx context.Context, task *asyn
 
 	slog.DebugContext(ctx, "Processing subscription reminder",
 		logattr.DaysBefore(payload.DaysBefore),
+		logattr.Queue(w.queueName),
 	)
 
 	// Parse the subscription ID.
@@ -114,6 +116,7 @@ func (w *QueueWorker) handleSubscriptionReminder(ctx context.Context, task *asyn
 	if err != nil {
 		slog.ErrorContext(ctx, "Invalid subscription ID",
 			logattr.DaysBefore(payload.DaysBefore),
+			logattr.Queue(w.queueName),
 			logattr.Error(err),
 		)
 		return fmt.Errorf("invalid subscription ID: %w", err)
@@ -124,6 +127,7 @@ func (w *QueueWorker) handleSubscriptionReminder(ctx context.Context, task *asyn
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to fetch subscription",
 			logattr.DaysBefore(payload.DaysBefore),
+			logattr.Queue(w.queueName),
 			logattr.Error(err),
 		)
 		return fmt.Errorf("failed to fetch subscription: %w", err)
@@ -133,6 +137,7 @@ func (w *QueueWorker) handleSubscriptionReminder(ctx context.Context, task *asyn
 	if subscription.Status != models.Active {
 		slog.DebugContext(ctx, "Skipping reminder for non-active subscription",
 			logattr.Status(string(subscription.Status)),
+			logattr.Queue(w.queueName),
 		)
 		return nil
 	}
@@ -143,6 +148,7 @@ func (w *QueueWorker) handleSubscriptionReminder(ctx context.Context, task *asyn
 		slog.ErrorContext(ctx, "Failed to fetch user",
 			logattr.DaysBefore(payload.DaysBefore),
 			logattr.ValidTill(subscription.ValidTill),
+			logattr.Queue(w.queueName),
 			logattr.Error(err),
 		)
 		return fmt.Errorf("failed to fetch user: %w", err)
@@ -159,6 +165,7 @@ func (w *QueueWorker) handleSubscriptionReminder(ctx context.Context, task *asyn
 		slog.ErrorContext(ctx, "Failed to send reminder email",
 			logattr.DaysBefore(payload.DaysBefore),
 			logattr.ValidTill(subscription.ValidTill),
+			logattr.Queue(w.queueName),
 			logattr.Error(err),
 		)
 		return fmt.Errorf("failed to send reminder email: %w", err)
@@ -166,6 +173,7 @@ func (w *QueueWorker) handleSubscriptionReminder(ctx context.Context, task *asyn
 	slog.InfoContext(ctx, "Reminder email sent",
 		logattr.DaysBefore(payload.DaysBefore),
 		logattr.ValidTill(subscription.ValidTill),
+		logattr.Queue(w.queueName),
 	)
 
 	// Store in Redis that the reminder was sent.
@@ -177,6 +185,7 @@ func (w *QueueWorker) handleSubscriptionReminder(ctx context.Context, task *asyn
 		slog.ErrorContext(ctx, "Failed to set reminder sent key in Redis",
 			logattr.DaysBefore(payload.DaysBefore),
 			logattr.ValidTill(subscription.ValidTill),
+			logattr.Queue(w.queueName),
 			logattr.Error(err),
 		)
 	}
@@ -189,6 +198,7 @@ func (w *QueueWorker) handleSubscriptionRenewal(ctx context.Context, task *asynq
 	var payload RenewalPayload
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
 		slog.ErrorContext(ctx, "Failed to unmarshal renewal task payload",
+			logattr.Queue(w.queueName),
 			logattr.Error(err),
 		)
 		return fmt.Errorf("failed to unmarshal renewal task payload: %w", err)
@@ -197,13 +207,17 @@ func (w *QueueWorker) handleSubscriptionRenewal(ctx context.Context, task *asynq
 	ctx = observability.EnrichContext(ctx, payload.UserID, payload.SubscriptionID)
 	observability.EnrichSpan(ctx)
 
-	slog.DebugContext(ctx, "Processing subscription renewal")
+	slog.DebugContext(ctx, "Processing subscription renewal",
+		logattr.Queue(w.queueName),
+	)
 
 	// Parse the subscription ID
 	subscriptionID, err := bson.ObjectIDFromHex(payload.SubscriptionID)
 	if err != nil {
 		slog.ErrorContext(ctx, "Invalid subscription ID",
-			logattr.Error(err))
+			logattr.Queue(w.queueName),
+			logattr.Error(err),
+		)
 		return fmt.Errorf("invalid subscription ID: %w", err)
 	}
 
@@ -211,7 +225,9 @@ func (w *QueueWorker) handleSubscriptionRenewal(ctx context.Context, task *asynq
 	subscription, err := w.subscriptionService.FetchSubscriptionByIDInternal(ctx, subscriptionID)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to fetch subscription",
-			logattr.Error(err))
+			logattr.Queue(w.queueName),
+			logattr.Error(err),
+		)
 		return fmt.Errorf("failed to fetch subscription: %w", err)
 	}
 
@@ -219,6 +235,7 @@ func (w *QueueWorker) handleSubscriptionRenewal(ctx context.Context, task *asynq
 	if subscription.Status != models.Active {
 		slog.DebugContext(ctx, "Skipping renewal for non-active subscription",
 			logattr.Status(string(subscription.Status)),
+			logattr.Queue(w.queueName),
 		)
 		return nil
 	}
@@ -229,6 +246,7 @@ func (w *QueueWorker) handleSubscriptionRenewal(ctx context.Context, task *asynq
 	if subscription.ValidTill.After(renewalWindow) {
 		slog.DebugContext(ctx, "Skipping renewal: outside valid window",
 			logattr.ValidTill(subscription.ValidTill),
+			logattr.Queue(w.queueName),
 		)
 		return nil
 	}
@@ -238,19 +256,18 @@ func (w *QueueWorker) handleSubscriptionRenewal(ctx context.Context, task *asynq
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to renew subscription",
 			logattr.ValidTill(subscription.ValidTill),
-			logattr.Error(err))
+			logattr.Queue(w.queueName),
+			logattr.Error(err),
+		)
 		return fmt.Errorf("failed to renew subscription: %w", err)
 	}
-
-	slog.InfoContext(ctx, "Subscription renewed",
-		logattr.ValidTill(renewedSubscription.ValidTill),
-	)
 
 	// Send a confirmation email to the user
 	user, err := w.userService.FetchUserByIDInternal(ctx, subscription.UserID)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to fetch user for renewal notification",
 			logattr.ValidTill(renewedSubscription.ValidTill),
+			logattr.Queue(w.queueName),
 			logattr.Error(err),
 		)
 		// Continue without sending email
@@ -266,9 +283,15 @@ func (w *QueueWorker) handleSubscriptionRenewal(ctx context.Context, task *asynq
 	); err != nil {
 		slog.ErrorContext(ctx, "Failed to send renewal confirmation email",
 			logattr.ValidTill(renewedSubscription.ValidTill),
+			logattr.Queue(w.queueName),
 			logattr.Error(err),
 		)
 		// Continue execution even if email fails
+	} else {
+		slog.InfoContext(ctx, "Renewal confirmation email sent", 
+			logattr.ValidTill(renewedSubscription.ValidTill),
+			logattr.Queue(w.queueName),
+		)
 	}
 
 	return nil
@@ -278,6 +301,7 @@ func (w *QueueWorker) handleSubscriptionExpiration(ctx context.Context, task *as
 	var payload ExpirationPayload
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
 		slog.ErrorContext(ctx, "Failed to unmarshal expiration task payload",
+			logattr.Queue(w.queueName),
 			logattr.Error(err),
 		)
 		return fmt.Errorf("failed to unmarshal expiration task payload: %w", err)
@@ -286,12 +310,15 @@ func (w *QueueWorker) handleSubscriptionExpiration(ctx context.Context, task *as
 	ctx = observability.EnrichContext(ctx, payload.UserID, payload.SubscriptionID)
 	observability.EnrichSpan(ctx)
 
-	slog.DebugContext(ctx, "Processing subscription expiration")
+	slog.DebugContext(ctx, "Processing subscription expiration",
+		logattr.Queue(w.queueName),
+	)
 
 	// Parse the subscription ID
 	subscriptionID, err := bson.ObjectIDFromHex(payload.SubscriptionID)
 	if err != nil {
 		slog.ErrorContext(ctx, "Invalid subscription ID",
+			logattr.Queue(w.queueName),
 			logattr.Error(err),
 		)
 		return fmt.Errorf("invalid subscription ID: %w", err)
@@ -301,6 +328,7 @@ func (w *QueueWorker) handleSubscriptionExpiration(ctx context.Context, task *as
 	subscription, err := w.subscriptionService.FetchSubscriptionByIDInternal(ctx, subscriptionID)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to fetch subscription",
+			logattr.Queue(w.queueName),
 			logattr.Error(err),
 		)
 		return fmt.Errorf("failed to fetch subscription: %w", err)
@@ -310,6 +338,7 @@ func (w *QueueWorker) handleSubscriptionExpiration(ctx context.Context, task *as
 	if subscription.Status != models.Canceled {
 		slog.DebugContext(ctx, "Skipping expiration for non-canceled subscription",
 			logattr.Status(string(subscription.Status)),
+			logattr.Queue(w.queueName),
 		)
 		return nil
 	}
@@ -319,6 +348,7 @@ func (w *QueueWorker) handleSubscriptionExpiration(ctx context.Context, task *as
 	if subscription.ValidTill.After(now) {
 		slog.DebugContext(ctx, "Skipping expiration: subscription still valid",
 			logattr.ValidTill(subscription.ValidTill),
+			logattr.Queue(w.queueName),
 		)
 		return nil
 	}
@@ -327,14 +357,11 @@ func (w *QueueWorker) handleSubscriptionExpiration(ctx context.Context, task *as
 	if err := w.subscriptionService.MarkCanceledSubscriptionAsExpiredInternal(ctx, subscriptionID); err != nil {
 		slog.ErrorContext(ctx, "Failed to mark subscription as expired",
 			logattr.ValidTill(subscription.ValidTill),
+			logattr.Queue(w.queueName),
 			logattr.Error(err),
 		)
 		return fmt.Errorf("failed to mark subscription as expired: %w", err)
 	}
-
-	slog.InfoContext(ctx, "Subscription expired",
-		logattr.ValidTill(subscription.ValidTill),
-	)
 
 	return nil
 }

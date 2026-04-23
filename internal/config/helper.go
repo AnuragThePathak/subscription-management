@@ -1,7 +1,6 @@
 package config
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,42 +14,11 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
-	"go.mongodb.org/mongo-driver/v2/event"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.opentelemetry.io/contrib/instrumentation/go.mongodb.org/mongo-driver/v2/mongo/otelmongo"
+	"go.opentelemetry.io/otel"
 )
-
-// composeMonitors returns a single CommandMonitor that fans out events to both
-// m1 and m2. Both arguments must be non-nil.
-func composeMonitors(m1, m2 *event.CommandMonitor) *event.CommandMonitor {
-	return &event.CommandMonitor{
-		Started: func(ctx context.Context, evt *event.CommandStartedEvent) {
-			if m1.Started != nil {
-				m1.Started(ctx, evt)
-			}
-			if m2.Started != nil {
-				m2.Started(ctx, evt)
-			}
-		},
-		Succeeded: func(ctx context.Context, evt *event.CommandSucceededEvent) {
-			if m1.Succeeded != nil {
-				m1.Succeeded(ctx, evt)
-			}
-			if m2.Succeeded != nil {
-				m2.Succeeded(ctx, evt)
-			}
-		},
-		Failed: func(ctx context.Context, evt *event.CommandFailedEvent) {
-			if m1.Failed != nil {
-				m1.Failed(ctx, evt)
-			}
-			if m2.Failed != nil {
-				m2.Failed(ctx, evt)
-			}
-		},
-	}
-}
 
 // DatabaseConnection establishes a connection to the MongoDB database.
 func DatabaseConnection(dbConfig DatabaseConfig, otelEnabled bool) (*adapters.Database, error) {
@@ -67,9 +35,8 @@ func DatabaseConnection(dbConfig DatabaseConfig, otelEnabled bool) (*adapters.Da
 
 	if otelEnabled {
 		dbClientOpts.SetMonitor(
-			composeMonitors(
-				otelmongo.NewMonitor(),
-				observability.NewMongoMetricsMonitor(),
+			otelmongo.NewMonitor(
+				otelmongo.WithMeterProvider(otel.GetMeterProvider()),
 			),
 		)
 	}

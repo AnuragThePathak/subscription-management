@@ -168,8 +168,8 @@ func (us *userService) UpdateUser(ctx context.Context, id string, updateReq *mod
 		}
 
 		// Verify current password
-		err = bcrypt.CompareHashAndPassword([]byte(existingUser.Password), []byte(updateReq.CurrentPassword))
-		if err != nil {
+		hashErr := bcrypt.CompareHashAndPassword([]byte(existingUser.Password), []byte(updateReq.CurrentPassword))
+		if hashErr != nil {
 			return nil, apperror.NewUnauthorizedError("Current password is incorrect")
 		}
 

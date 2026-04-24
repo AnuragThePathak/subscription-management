@@ -53,17 +53,17 @@ func NewMetricsAdapter(cfg Config, state stateProvider) (*OTelMetricsAdapter, er
 	}
 
 	_, err = meter.RegisterCallback(func(ctx context.Context, o metric.Observer) error {
-		activeSubscriptionsCount, subscriptionErr := state.CountActiveSubscriptions(ctx)
-		if subscriptionErr != nil {
+		activeSubscriptionsCount, sErr := state.CountActiveSubscriptions(ctx)
+		if sErr != nil {
 			slog.ErrorContext(ctx,
 				"Failed to fetch active subscriptions count for telemetry",
-				logattr.Error(subscriptionErr),
+				logattr.Error(sErr),
 			)
 			return nil
 		}
 		o.ObserveInt64(activeGauge, activeSubscriptionsCount)
 		return nil
-	})
+	}, activeGauge)
 	if err != nil {
 		return nil, fmt.Errorf("failed to register callback for 'active_subscriptions' metric: %w", err)
 	}

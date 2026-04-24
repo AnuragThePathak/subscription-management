@@ -603,8 +603,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, command) (rate(db_query_duration_seconds_bucket[5m])))",
-          "legendFormat": "p95 {{command}}",
+          "expr": "histogram_quantile(0.95, sum by (le, db_operation_name) (rate(db_client_operation_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95 {{db_operation_name}}",
           "refId": "A"
         },
         {
@@ -612,8 +612,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.99, sum by (le, command) (rate(db_query_duration_seconds_bucket[5m])))",
-          "legendFormat": "p99 {{command}}",
+          "expr": "histogram_quantile(0.99, sum by (le, db_operation_name) (rate(db_client_operation_duration_seconds_bucket[5m])))",
+          "legendFormat": "p99 {{db_operation_name}}",
           "refId": "B"
         }
       ],
@@ -660,8 +660,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (command, status) (rate(db_query_duration_seconds_count[1m]))",
-          "legendFormat": "{{command}} ({{status}})",
+          "expr": "sum by (db_operation_name) (rate(db_client_operation_duration_seconds_count[1m]))",
+          "legendFormat": "{{db_operation_name}}",
           "refId": "A"
         }
       ],
@@ -674,7 +674,164 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 39
+        "y": 35
+      },
+      "id": 200,
+      "title": "Background Workers (Asynq)",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Total tasks processed by type and outcome.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "showPoints": "never"
+          },
+          "unit": "ops"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 36
+      },
+      "id": 201,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job_type, job_status) (rate(worker_task_total[5m]))",
+          "legendFormat": "{{job_type}} ({{job_status}})",
+          "refId": "A"
+        }
+      ],
+      "title": "Worker Throughput",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "P95 execution time for background tasks.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "showPoints": "never"
+          },
+          "unit": "s"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 36
+      },
+      "id": 202,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, job_type) (rate(worker_task_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95 {{job_type}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Worker Latency (P95)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Current number of tasks waiting in Redis.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 30,
+            "showPoints": "never"
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 36
+      },
+      "id": 203,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (queue_state) (worker_queue_depth)",
+          "legendFormat": "{{queue_state}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Queue Depth by State",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 44
       },
       "id": 20,
       "title": "Logs",
@@ -762,7 +919,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 40
+        "y": 45
       },
       "id": 21,
       "options": {
@@ -801,7 +958,7 @@
         "h": 12,
         "w": 24,
         "x": 0,
-        "y": 48
+        "y": 53
       },
       "id": 22,
       "options": {

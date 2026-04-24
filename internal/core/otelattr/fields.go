@@ -16,6 +16,7 @@ const (
 	processAtKey = attribute.Key("job.process_at")
 	queueKey     = attribute.Key("job.queue")
 	statusKey    = attribute.Key("job.status")
+	stateKey     = attribute.Key("queue.state")
 )
 
 // SubscriptionID returns an attribute.KeyValue for the subscription ID.

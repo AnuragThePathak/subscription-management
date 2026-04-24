@@ -164,6 +164,16 @@ func main() {
 				logattr.OtelEnabled(cf.OTel.Enabled),
 				logattr.Error(err))
 		}
+
+		if err := observability.InitQueueMetrics(
+			cf.OTel.ServiceName,
+			config.QueueRedisConfig(cf.Redis),
+		); err != nil {
+			slog.Error("Failed to initialize queue metrics",
+				logattr.Env(cf.Env),
+				logattr.OtelEnabled(cf.OTel.Enabled),
+				logattr.Error(err))
+		}
 	} else {
 		// Noop instruments — domain layer calls are safe no-ops.
 		metricsPort = observability.NewNoOpMetricsAdapter()

@@ -6,3 +6,12 @@ var (
 	// StatusError is the attribute value for a failed operation.
 	StatusError = statusKey.String("error")
 )
+
+var (
+	StateCompleted = stateKey.String("completed")
+	StateActive    = stateKey.String("active")
+	StatePending   = stateKey.String("pending")
+	StateScheduled = stateKey.String("scheduled")
+	StateRetry     = stateKey.String("retry")
+	StateArchived  = stateKey.String("archived")
+)

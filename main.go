@@ -150,7 +150,14 @@ func main() {
 	// Initialize business metrics adapter
 	var metricsPort *observability.OTelMetricsAdapter
 	if cf.OTel.Enabled {
-		metricsPort, err = observability.NewMetricsAdapter(cf.OTel)
+		type appMetricsState struct {
+			repositories.SubscriptionRepository
+		}
+
+		metricsPort, err = observability.NewMetricsAdapter(cf.OTel,
+			appMetricsState{
+				subscriptionRepository,
+			})
 		if err != nil {
 			slog.Error("Failed to initialize business metrics adapter",
 				logattr.Env(cf.Env),

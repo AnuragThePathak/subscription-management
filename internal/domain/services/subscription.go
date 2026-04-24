@@ -40,8 +40,6 @@ type SubscriptionService interface {
 type SubscriptionMetrics interface {
 	IncSubscriptionsCreated(ctx context.Context)
 	IncSubscriptionsCanceled(ctx context.Context)
-	IncActiveSubscriptions(ctx context.Context)
-	DecActiveSubscriptions(ctx context.Context)
 }
 
 type subscriptionService struct {
@@ -117,7 +115,6 @@ func (s *subscriptionService) CreateSubscription(ctx context.Context, subscripti
 	}
 
 	s.metrics.IncSubscriptionsCreated(ctx)
-	s.metrics.IncActiveSubscriptions(ctx)
 
 	slog.InfoContext(ctx, "Subscription created",
 		logattr.SubscriptionID(res.ID.Hex()),
@@ -268,7 +265,6 @@ func (s *subscriptionService) CancelSubscription(ctx context.Context, id string,
 	}
 
 	s.metrics.IncSubscriptionsCanceled(ctx)
-	s.metrics.DecActiveSubscriptions(ctx)
 
 	slog.InfoContext(ctx, "Subscription canceled",
 		logattr.ValidTill(res.ValidTill),

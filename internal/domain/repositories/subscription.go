@@ -21,6 +21,7 @@ type SubscriptionRepository interface {
 	GetAll(context.Context) ([]*models.Subscription, error)
 	GetByUserID(context.Context, bson.ObjectID) ([]*models.Subscription, error)
 	GetActiveSubscriptions(context.Context) ([]*models.Subscription, error)
+	CountActiveSubscriptions(ctx context.Context) (int64, error)
 	GetSubscriptionsDueForReminder(context.Context, []int) ([]*models.Subscription, error)
 	GetSubscriptionsDueForRenewal(context.Context, time.Time, time.Time) ([]*models.Subscription, error)
 	GetCanceledExpiredSubscriptions(context.Context) ([]*models.Subscription, error)
@@ -92,6 +93,17 @@ func (r *subscriptionRepository) GetActiveSubscriptions(ctx context.Context) ([]
 		},
 	}
 	return lib.FindMany[models.Subscription](ctx, r.collection, filter)
+}
+
+func (r *subscriptionRepository) CountActiveSubscriptions(ctx context.Context) (int64, error) {
+	filter := bson.M{
+		"status": models.Active,
+		"valid_till": bson.M{
+			"$gt": time.Now(),
+		},
+	}
+
+	return lib.Count(ctx, r.collection, filter)
 }
 
 func (r *subscriptionRepository) GetSubscriptionsDueForReminder(ctx context.Context, daysBefore []int) ([]*models.Subscription, error) {

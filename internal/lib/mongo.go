@@ -14,8 +14,8 @@ import (
 )
 
 func FindOne[T any](ctx context.Context, collection *mongo.Collection, filter bson.M, opts ...options.Lister[options.FindOneOptions]) (*T, error) {
-	var result T
-	err := collection.FindOne(ctx, filter, opts...).Decode(&result)
+	var res T
+	err := collection.FindOne(ctx, filter, opts...).Decode(&res)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
 			return nil, apperror.NewNotFoundError("Document not found")
@@ -25,7 +25,7 @@ func FindOne[T any](ctx context.Context, collection *mongo.Collection, filter bs
 		}
 		return nil, apperror.NewDBError(err)
 	}
-	return &result, nil
+	return &res, nil
 }
 
 func FindMany[T any](ctx context.Context, collection *mongo.Collection, filter bson.M, opts ...options.Lister[options.FindOptions]) ([]*T, error) {
@@ -38,13 +38,13 @@ func FindMany[T any](ctx context.Context, collection *mongo.Collection, filter b
 	}
 	defer cursor.Close(ctx)
 
-	var results []*T
+	var res []*T
 	for cursor.Next(ctx) {
 		var item T
 		if err := cursor.Decode(&item); err != nil {
 			return nil, apperror.NewDBError(err)
 		}
-		results = append(results, &item)
+		res = append(res, &item)
 	}
 
 	if err := cursor.Err(); err != nil {
@@ -53,7 +53,18 @@ func FindMany[T any](ctx context.Context, collection *mongo.Collection, filter b
 		}
 		return nil, apperror.NewDBError(err)
 	}
-	return results, nil
+	return res, nil
+}
+
+func Count(ctx context.Context, collection *mongo.Collection, filter bson.M, opts ...options.Lister[options.CountOptions]) (int64, error) {
+	res, err := collection.CountDocuments(ctx, filter, opts...)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return 0, apperror.NewTimeoutError(err)
+		}
+		return 0, apperror.NewDBError(err)
+	}
+	return res, nil
 }
 
 // BuildMongoURI constructs a connection string dynamically based on the host type.

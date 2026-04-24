@@ -1,4 +1,4 @@
-package traceattr
+package otelattr
 
 import (
 	"time"
@@ -15,6 +15,7 @@ const (
 	taskTypeKey  = attribute.Key("job.type")
 	processAtKey = attribute.Key("job.process_at")
 	queueKey     = attribute.Key("job.queue")
+	statusKey    = attribute.Key("job.status")
 )
 
 // SubscriptionID returns an attribute.KeyValue for the subscription ID.
@@ -41,3 +42,9 @@ func ProcessAt(t time.Time) attribute.KeyValue {
 func Queue(q string) attribute.KeyValue {
 	return queueKey.String(q)
 }
+
+// Status returns an attribute.KeyValue for the job status.
+func Status(s string) attribute.KeyValue {
+	return statusKey.String(s)
+}
+

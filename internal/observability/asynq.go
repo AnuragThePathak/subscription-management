@@ -5,7 +5,8 @@ import (
 	"fmt"
 
 	"github.com/anuragthepathak/subscription-management/internal/core/appctx"
-	"github.com/anuragthepathak/subscription-management/internal/core/traceattr"
+	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
+	"github.com/anuragthepathak/subscription-management/internal/core/otelattr"
 	"github.com/hibiken/asynq"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
@@ -45,7 +46,7 @@ func AsynqTracingMiddleware(serviceName string) asynq.MiddlewareFunc {
 				trace.WithAttributes(
 					semconv.MessagingSystemKey.String("asynq"),
 					semconv.MessagingOperationTypeProcess,
-					traceattr.TaskType(task.Type()),
+					otelattr.TaskType(task.Type()),
 				),
 			)
 			defer span.End()
@@ -82,7 +83,7 @@ func AsynqProducerAttributes(taskType string, queue string) []trace.SpanStartOpt
 			semconv.MessagingSystemKey.String("asynq"),
 			semconv.MessagingOperationTypeSend,
 			semconv.MessagingDestinationName(queue),
-			traceattr.TaskType(taskType),
+			otelattr.TaskType(taskType),
 		),
 	}
 }

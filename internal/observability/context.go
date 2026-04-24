@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/anuragthepathak/subscription-management/internal/core/appctx"
-	"github.com/anuragthepathak/subscription-management/internal/core/traceattr"
+	"github.com/anuragthepathak/subscription-management/internal/core/otelattr"
 	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -25,6 +25,6 @@ func EnrichSpan(ctx context.Context) {
 		span.SetAttributes(semconv.EnduserID(userID))
 	}
 	if subscriptionID, ok := appctx.GetSubscriptionID(ctx); ok {
-		span.SetAttributes(traceattr.SubscriptionID(subscriptionID))
+		span.SetAttributes(otelattr.SubscriptionID(subscriptionID))
 	}
 }

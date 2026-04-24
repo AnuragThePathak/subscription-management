@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/anuragthepathak/subscription-management/internal/core/appctx"
-	"github.com/anuragthepathak/subscription-management/internal/core/traceattr"
+	"github.com/anuragthepathak/subscription-management/internal/core/otelattr"
 	"github.com/go-chi/chi/v5"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -28,7 +28,7 @@ func WithSubscriptionID(next http.Handler) http.Handler {
 
 		// Update OpenTelemetry span
 		trace.SpanFromContext(ctx).SetAttributes(
-			traceattr.SubscriptionID(subscriptionID),
+			otelattr.SubscriptionID(subscriptionID),
 		)
 
 		next.ServeHTTP(w, r.WithContext(ctx))

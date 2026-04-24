@@ -10,7 +10,7 @@ import (
 
 	"github.com/anuragthepathak/subscription-management/internal/core/appctx"
 	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
-	"github.com/anuragthepathak/subscription-management/internal/core/traceattr"
+	"github.com/anuragthepathak/subscription-management/internal/core/otelattr"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/anuragthepathak/subscription-management/internal/domain/services"
 	"github.com/anuragthepathak/subscription-management/internal/lib"
@@ -132,7 +132,7 @@ func (s *SubscriptionScheduler) pollSubscriptions(ctx context.Context) {
 	// Start a trace span for this entire scheduler tick execution
 	ctx, span := s.tracer.Start(ctx, "Scheduler Tick: Poll Subscriptions",
 		trace.WithAttributes(
-			traceattr.Queue(s.queueName),
+			otelattr.Queue(s.queueName),
 		),
 	)
 	defer span.End()
@@ -178,7 +178,7 @@ func (s *SubscriptionScheduler) handleReminderTasks(ctx context.Context) error {
 	ctx = appctx.WithTaskType(ctx, ReminderTask)
 	ctx, span := s.tracer.Start(ctx, "Phase: Reminder Tasks",
 		trace.WithAttributes(
-			traceattr.TaskType(ReminderTask),
+			otelattr.TaskType(ReminderTask),
 		),
 	)
 	defer span.End()
@@ -246,7 +246,7 @@ func (s *SubscriptionScheduler) processReminderTask(
 ) (bool, error) {
 	ctx, span := s.tracer.Start(ctx, "Process Reminder Task",
 		trace.WithAttributes(
-			traceattr.TaskType(ReminderTask),
+			otelattr.TaskType(ReminderTask),
 		),
 	)
 	defer span.End()
@@ -254,7 +254,7 @@ func (s *SubscriptionScheduler) processReminderTask(
 	observability.EnrichSpan(ctx)
 
 	daysBefore := lib.DaysBetween(time.Now(), subscription.ValidTill, nil)
-	span.SetAttributes(traceattr.DaysBefore(daysBefore))
+	span.SetAttributes(otelattr.DaysBefore(daysBefore))
 
 	redisKey := fmt.Sprintf("reminder_sent:%s:%d", subscription.ID.Hex(), daysBefore)
 	exists, err := s.redisClient.Exists(ctx, redisKey).Result()
@@ -351,7 +351,7 @@ func (s *SubscriptionScheduler) handleRenewalTasks(ctx context.Context) error {
 	ctx = appctx.WithTaskType(ctx, RenewalTask)
 	ctx, span := s.tracer.Start(ctx, "Phase: Renewal Tasks",
 		trace.WithAttributes(
-			traceattr.TaskType(RenewalTask),
+			otelattr.TaskType(RenewalTask),
 		),
 	)
 	defer span.End()
@@ -454,7 +454,7 @@ func (s *SubscriptionScheduler) scheduleRenewalTask(ctx context.Context, subscri
 	if processAt.Before(time.Now()) {
 		processAt = time.Now()
 	}
-	span.SetAttributes(traceattr.ProcessAt(processAt))
+	span.SetAttributes(otelattr.ProcessAt(processAt))
 
 	info, err := s.client.Enqueue(
 		task,
@@ -494,7 +494,7 @@ func (s *SubscriptionScheduler) handleExpirationTasks(ctx context.Context) error
 	ctx = appctx.WithTaskType(ctx, ExpirationTask)
 	ctx, span := s.tracer.Start(ctx, "Phase: Expiration Tasks",
 		trace.WithAttributes(
-			traceattr.TaskType(ExpirationTask),
+			otelattr.TaskType(ExpirationTask),
 		),
 	)
 	defer span.End()

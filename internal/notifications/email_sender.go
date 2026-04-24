@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/anuragthepathak/subscription-management/internal/core/traceattr"
+	"github.com/anuragthepathak/subscription-management/internal/core/otelattr"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
@@ -65,7 +65,7 @@ func (es *EmailSender) SendReminderEmail(
 	ctx, span := es.tracer.Start(ctx, "Send Reminder Email",
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
-			traceattr.DaysBefore(daysBefore),
+			otelattr.DaysBefore(daysBefore),
 		),
 	)
 	defer span.End()

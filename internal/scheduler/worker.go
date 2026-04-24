@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
-	"github.com/anuragthepathak/subscription-management/internal/core/traceattr"
+	"github.com/anuragthepathak/subscription-management/internal/core/otelattr"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/anuragthepathak/subscription-management/internal/domain/services"
 	"github.com/anuragthepathak/subscription-management/internal/notifications"
@@ -103,7 +103,7 @@ func (w *QueueWorker) handleSubscriptionReminder(ctx context.Context, task *asyn
 	ctx = observability.EnrichContext(ctx, payload.UserID, payload.SubscriptionID)
 	observability.EnrichSpan(ctx)
 	trace.SpanFromContext(ctx).SetAttributes(
-		traceattr.DaysBefore(payload.DaysBefore),
+		otelattr.DaysBefore(payload.DaysBefore),
 	)
 
 	slog.DebugContext(ctx, "Processing subscription reminder",
@@ -288,7 +288,7 @@ func (w *QueueWorker) handleSubscriptionRenewal(ctx context.Context, task *asynq
 		)
 		// Continue execution even if email fails
 	} else {
-		slog.InfoContext(ctx, "Renewal confirmation email sent", 
+		slog.InfoContext(ctx, "Renewal confirmation email sent",
 			logattr.ValidTill(renewedSubscription.ValidTill),
 			logattr.Queue(w.queueName),
 		)

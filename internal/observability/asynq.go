@@ -81,7 +81,7 @@ func AsynqTracingMiddleware(serviceName string) asynq.MiddlewareFunc {
 			)
 			defer span.End()
 			if taskID, ok := asynq.GetTaskID(ctx); ok {
-				otelAttrs = append(otelAttrs, semconv.MessagingMessageID(taskID))
+				span.SetAttributes(semconv.MessagingMessageID(taskID))
 			}
 			if queue, ok := asynq.GetQueueName(ctx); ok {
 				otelAttrs = append(otelAttrs, semconv.MessagingDestinationName(queue))

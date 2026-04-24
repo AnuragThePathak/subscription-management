@@ -166,8 +166,8 @@ func NewRateLimit(rateConfig RateLimiterConfig) redis_rate.Limit {
 }
 
 // QueueRedisConfig returns Redis configuration for the task queue.
-func QueueRedisConfig(redisConfig RedisConfig) *asynq.RedisClientOpt {
-	return &asynq.RedisClientOpt{
+func QueueRedisConfig(redisConfig RedisConfig) asynq.RedisConnOpt {
+	return asynq.RedisClientOpt{
 		Addr:     fmt.Sprintf("%s:%d", redisConfig.Host, redisConfig.Port),
 		Password: redisConfig.Password,
 		DB:       redisConfig.DB,

@@ -12,7 +12,7 @@ import (
 
 // Redis wraps the Redis client to provide additional functionality.
 type Redis struct {
-	Client *redis.Client
+	Client redis.UniversalClient
 }
 
 // Shutdown gracefully shuts down the Redis client, respecting the provided context.

@@ -24,7 +24,7 @@ type QueueWorker struct {
 	subscriptionService services.SubscriptionServiceInternal
 	userService         services.UserServiceInternal
 	emailSender         *notifications.EmailSender
-	redisClient         *redis.Client
+	redisClient         redis.UniversalClient
 	server              *asynq.Server
 	queueName           string
 	concurrency         int
@@ -36,8 +36,8 @@ func NewQueueWorker(
 	subscriptionService services.SubscriptionServiceInternal,
 	userService services.UserServiceInternal,
 	emailSender *notifications.EmailSender,
-	redisClient *redis.Client,
-	redisConfig *asynq.RedisClientOpt,
+	redisClient redis.UniversalClient,
+	redisConfig asynq.RedisConnOpt,
 	concurrency int,
 	queueName string,
 	name string,

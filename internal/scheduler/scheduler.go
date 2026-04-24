@@ -57,7 +57,7 @@ type ExpirationPayload struct {
 // SubscriptionScheduler handles scheduling of subscription-related tasks.
 type SubscriptionScheduler struct {
 	subscriptionService services.SubscriptionServiceInternal
-	redisClient         *redis.Client
+	redisClient         redis.UniversalClient
 	client              *asynq.Client
 	interval            time.Duration
 	reminderDays        []int
@@ -71,8 +71,8 @@ type SubscriptionScheduler struct {
 // with the provided dependencies and configuration.
 func NewSubscriptionScheduler(
 	subscriptionService services.SubscriptionServiceInternal,
-	redisClient *redis.Client,
-	redisConfig *asynq.RedisClientOpt,
+	redisClient redis.UniversalClient,
+	redisConfig asynq.RedisConnOpt,
 	interval time.Duration,
 	reminderDays []int,
 	startupDelay time.Duration,

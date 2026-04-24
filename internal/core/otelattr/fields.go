@@ -42,9 +42,3 @@ func ProcessAt(t time.Time) attribute.KeyValue {
 func Queue(q string) attribute.KeyValue {
 	return queueKey.String(q)
 }
-
-// Status returns an attribute.KeyValue for the job status.
-func Status(s string) attribute.KeyValue {
-	return statusKey.String(s)
-}
-

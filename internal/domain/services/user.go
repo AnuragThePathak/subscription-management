@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"time"
 
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/apperror"
+	"github.com/anuragthepathak/subscription-management/internal/core/clock"
 	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/anuragthepathak/subscription-management/internal/domain/repositories"
@@ -41,13 +41,19 @@ const (
 type userService struct {
 	userRepository              repositories.UserRepository
 	subscriptionServiceInternal SubscriptionServiceInternal
+	getTime                     clock.NowFn
 }
 
 // NewUserService creates a new instance of UserService.
-func NewUserService(userRepository repositories.UserRepository, subscriptionServiceInternal SubscriptionServiceInternal) UserService {
+func NewUserService(
+	userRepository repositories.UserRepository,
+	subscriptionServiceInternal SubscriptionServiceInternal,
+	nowFn clock.NowFn,
+) UserService {
 	return &userService{
 		userRepository,
 		subscriptionServiceInternal,
+		nowFn,
 	}
 }
 
@@ -81,7 +87,7 @@ func (us *userService) CreateUser(ctx context.Context, user *models.User) (*mode
 	user.ID = bson.NewObjectID()
 
 	// Set timestamps
-	now := time.Now()
+	now := us.getTime()
 	user.CreatedAt = now
 	user.UpdatedAt = now
 
@@ -182,7 +188,7 @@ func (us *userService) UpdateUser(ctx context.Context, id string, updateReq *mod
 		updatedFields = append(updatedFields, userFieldPassword)
 	}
 
-	existingUser.UpdatedAt = time.Now()
+	existingUser.UpdatedAt = us.getTime()
 
 	// Save the updated user
 	result, err := us.userRepository.Update(ctx, existingUser)

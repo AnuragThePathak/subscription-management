@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/apperror"
+	"github.com/anuragthepathak/subscription-management/internal/core/clock"
 	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/anuragthepathak/subscription-management/internal/domain/repositories"
@@ -47,6 +48,7 @@ type subscriptionService struct {
 	subscriptionRepository repositories.SubscriptionRepository
 	billRepository         repositories.BillRepository
 	metrics                SubscriptionMetrics
+	getTime                clock.NowFn
 }
 
 func NewSubscriptionService(
@@ -54,12 +56,14 @@ func NewSubscriptionService(
 	subscriptionRepository repositories.SubscriptionRepository,
 	billRepository repositories.BillRepository,
 	metrics SubscriptionMetrics,
+	nowFn clock.NowFn,
 ) SubscriptionService {
 	return &subscriptionService{
 		txnFn,
 		subscriptionRepository,
 		billRepository,
 		metrics,
+		nowFn,
 	}
 }
 
@@ -71,7 +75,7 @@ func (s *subscriptionService) CreateSubscription(ctx context.Context, subscripti
 	subscription.UserID = userID
 	subscription.ID = bson.NewObjectID()
 
-	now := time.Now()
+	now := s.getTime()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 
 	subscription.ValidTill = lib.CalcRenewalDate(today, subscription.Frequency)
@@ -82,7 +86,7 @@ func (s *subscriptionService) CreateSubscription(ctx context.Context, subscripti
 		subscription.Currency = models.USD
 	}
 	// Continue with validation
-	if err = subscription.Validate(); err != nil {
+	if err = subscription.Validate(now); err != nil {
 		return nil, err
 	}
 	subscription.CreatedAt = now
@@ -229,7 +233,7 @@ func (s *subscriptionService) CancelSubscription(ctx context.Context, id string,
 		return nil, err
 	}
 
-	now := time.Now()
+	now := s.getTime()
 	// Update the subscription status
 	subscription.Status = models.Canceled
 	subscription.UpdatedAt = now
@@ -295,7 +299,7 @@ func (s *subscriptionService) RenewSubscriptionInternal(ctx context.Context, id 
 	}
 
 	// Check if the subscription is already renewed
-	now := time.Now()
+	now := s.getTime()
 	if latestBill.StartDate.After(now) {
 		return nil, apperror.NewConflictError("Subscription is already renewed")
 	}
@@ -339,7 +343,7 @@ func (s *subscriptionService) RenewSubscriptionInternal(ctx context.Context, id 
 }
 
 func (s *subscriptionService) FetchUpcomingRenewalsInternal(ctx context.Context, daysAhead []int) ([]*models.Subscription, error) {
-	return s.subscriptionRepository.GetSubscriptionsDueForReminder(ctx, daysAhead)
+	return s.subscriptionRepository.GetSubscriptionsDueForReminder(ctx, daysAhead, s.getTime())
 }
 
 func (s *subscriptionService) HasActiveSubscriptionsInternal(ctx context.Context, userID bson.ObjectID) (bool, error) {
@@ -360,7 +364,7 @@ func (s *subscriptionService) FetchSubscriptionsDueForRenewalInternal(ctx contex
 }
 
 func (s *subscriptionService) FetchCanceledExpiredSubscriptionsInternal(ctx context.Context) ([]*models.Subscription, error) {
-	return s.subscriptionRepository.GetCanceledExpiredSubscriptions(ctx)
+	return s.subscriptionRepository.GetCanceledExpiredSubscriptions(ctx, s.getTime())
 }
 
 func (s *subscriptionService) MarkCanceledSubscriptionAsExpiredInternal(ctx context.Context, id bson.ObjectID) error {
@@ -372,7 +376,7 @@ func (s *subscriptionService) MarkCanceledSubscriptionAsExpiredInternal(ctx cont
 		return apperror.NewConflictError("Only canceled subscriptions can be marked as expired")
 	}
 	subscription.Status = models.Expired
-	subscription.UpdatedAt = time.Now()
+	subscription.UpdatedAt = s.getTime()
 	_, err = s.subscriptionRepository.Update(ctx, subscription)
 	if err != nil {
 		return err

@@ -20,11 +20,11 @@ type SubscriptionRepository interface {
 	GetByID(context.Context, bson.ObjectID) (*models.Subscription, error)
 	GetAll(context.Context) ([]*models.Subscription, error)
 	GetByUserID(context.Context, bson.ObjectID) ([]*models.Subscription, error)
-	GetActiveSubscriptions(context.Context) ([]*models.Subscription, error)
-	CountActiveSubscriptions(ctx context.Context) (int64, error)
-	GetSubscriptionsDueForReminder(context.Context, []int) ([]*models.Subscription, error)
+	GetActiveSubscriptions(context.Context, time.Time) ([]*models.Subscription, error)
+	CountActiveSubscriptions(context.Context, time.Time) (int64, error)
+	GetSubscriptionsDueForReminder(context.Context, []int, time.Time) ([]*models.Subscription, error)
 	GetSubscriptionsDueForRenewal(context.Context, time.Time, time.Time) ([]*models.Subscription, error)
-	GetCanceledExpiredSubscriptions(context.Context) ([]*models.Subscription, error)
+	GetCanceledExpiredSubscriptions(context.Context, time.Time) ([]*models.Subscription, error)
 	Update(ctx context.Context, subscription *models.Subscription) (*models.Subscription, error)
 	Delete(ctx context.Context, id bson.ObjectID) error
 }
@@ -85,32 +85,35 @@ func (r *subscriptionRepository) GetByUserID(ctx context.Context, userID bson.Ob
 	return lib.FindMany[models.Subscription](ctx, r.collection, filter)
 }
 
-func (r *subscriptionRepository) GetActiveSubscriptions(ctx context.Context) ([]*models.Subscription, error) {
+func (r *subscriptionRepository) GetActiveSubscriptions(ctx context.Context, validAfter time.Time) ([]*models.Subscription, error) {
 	filter := bson.M{
 		"status": models.Active,
 		"valid_till": bson.M{
-			"$gt": time.Now(),
+			"$gt": validAfter,
 		},
 	}
 	return lib.FindMany[models.Subscription](ctx, r.collection, filter)
 }
 
-func (r *subscriptionRepository) CountActiveSubscriptions(ctx context.Context) (int64, error) {
+func (r *subscriptionRepository) CountActiveSubscriptions(ctx context.Context, validAfter time.Time) (int64, error) {
 	filter := bson.M{
 		"status": models.Active,
 		"valid_till": bson.M{
-			"$gt": time.Now(),
+			"$gt": validAfter,
 		},
 	}
 
 	return lib.Count(ctx, r.collection, filter)
 }
 
-func (r *subscriptionRepository) GetSubscriptionsDueForReminder(ctx context.Context, daysBefore []int) ([]*models.Subscription, error) {
-	now := time.Now()
+func (r *subscriptionRepository) GetSubscriptionsDueForReminder(
+	ctx context.Context,
+	daysBefore []int,
+	referenceTime time.Time,
+) ([]*models.Subscription, error) {
 	var orConditions []bson.M
 	for _, days := range daysBefore {
-		targetDay := now.AddDate(0, 0, days)
+		targetDay := referenceTime.AddDate(0, 0, days)
 		startOfTargetDay := time.Date(targetDay.Year(), targetDay.Month(), targetDay.Day(), 0, 0, 0, 0, targetDay.Location())
 		endOfTargetDay := startOfTargetDay.Add(24 * time.Hour)
 
@@ -143,11 +146,11 @@ func (r *subscriptionRepository) GetSubscriptionsDueForRenewal(ctx context.Conte
 	return lib.FindMany[models.Subscription](ctx, r.collection, filter, opts)
 }
 
-func (r *subscriptionRepository) GetCanceledExpiredSubscriptions(ctx context.Context) ([]*models.Subscription, error) {
+func (r *subscriptionRepository) GetCanceledExpiredSubscriptions(ctx context.Context, validBefore time.Time) ([]*models.Subscription, error) {
 	filter := bson.M{
 		"status": models.Canceled,
 		"valid_till": bson.M{
-			"$lt": time.Now(),
+			"$lt": validBefore,
 		},
 	}
 

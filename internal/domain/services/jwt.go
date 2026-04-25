@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/anuragthepathak/subscription-management/internal/core/clock"
 	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/golang-jwt/jwt/v5"
@@ -29,11 +30,12 @@ type JWTConfig struct {
 }
 
 type jwtService struct {
-	config JWTConfig
+	config  JWTConfig
+	getTime clock.NowFn
 }
 
 // NewJWTService creates a new JWT service instance.
-func NewJWTService(config JWTConfig) JWTService {
+func NewJWTService(config JWTConfig, nowFn clock.NowFn) JWTService {
 	slog.Info("JWT service created",
 		logattr.Issuer(config.Issuer),
 		logattr.AccessExpiryHours(config.AccessExpiryHours),
@@ -41,7 +43,8 @@ func NewJWTService(config JWTConfig) JWTService {
 	)
 
 	return &jwtService{
-		config: config,
+		config:  config,
+		getTime: nowFn,
 	}
 }
 
@@ -60,7 +63,7 @@ func (s *jwtService) generateToken(
 	tokenType models.TokenType,
 	expiry time.Time,
 ) (string, error) {
-	now := time.Now()
+	now := s.getTime()
 	claims := models.Claims{
 		UserID: userID,
 		Email:  email,
@@ -87,7 +90,7 @@ func (s *jwtService) generateToken(
 // GenerateTokens creates both access and refresh tokens for a user.
 func (s *jwtService) GenerateTokens(userID, email string) (*models.TokenResponse, error) {
 	// Generate access token.
-	accessExpiry := time.Now().Add(time.Hour * time.Duration(s.config.AccessExpiryHours))
+	accessExpiry := s.getTime().Add(time.Hour * time.Duration(s.config.AccessExpiryHours))
 	accessToken, err := s.generateToken(
 		userID,
 		email,
@@ -99,7 +102,7 @@ func (s *jwtService) GenerateTokens(userID, email string) (*models.TokenResponse
 	}
 
 	// Generate refresh token.
-	refreshExpiry := time.Now().Add(time.Hour * time.Duration(s.config.RefreshExpiryHours))
+	refreshExpiry := s.getTime().Add(time.Hour * time.Duration(s.config.RefreshExpiryHours))
 	refreshToken, err := s.generateToken(
 		userID,
 		email,

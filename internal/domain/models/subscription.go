@@ -54,7 +54,7 @@ type Subscription struct {
 }
 
 // Validate validates the subscription fields.
-func (s *Subscription) Validate() error {
+func (s *Subscription) Validate(now time.Time) error {
 	if s.Name == "" || len(s.Name) < 2 || len(s.Name) > 100 {
 		return apperror.NewValidationError("name must be between 2 and 100 characters")
 	}
@@ -72,7 +72,10 @@ func (s *Subscription) Validate() error {
 	if s.Status != Active && s.Status != Canceled && s.Status != Expired {
 		return apperror.NewValidationError("invalid status")
 	}
-	if s.ValidTill.IsZero() || s.ValidTill.Before(time.Now()) {
+	if s.ValidTill.IsZero() {
+		return apperror.NewValidationError("expiry date is required")
+	}
+	if s.ValidTill.Before(now) {
 		return apperror.NewValidationError("expiry date must be in the future")
 	}
 	if s.UserID.IsZero() {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"go.opentelemetry.io/otel"
@@ -20,7 +21,7 @@ type OTelMetricsAdapter struct {
 
 // stateProvider defines the exact data the metrics adapter needs from the outside world.
 type stateProvider interface {
-	CountActiveSubscriptions(ctx context.Context) (int64, error)
+	CountActiveSubscriptions(ctx context.Context, validAfter time.Time) (int64, error)
 }
 
 // NewMetricsAdapter generates the OpenTelemetry adapter with dynamic
@@ -53,7 +54,7 @@ func NewMetricsAdapter(cfg Config, state stateProvider) (*OTelMetricsAdapter, er
 	}
 
 	_, err = meter.RegisterCallback(func(ctx context.Context, o metric.Observer) error {
-		activeSubscriptionsCount, sErr := state.CountActiveSubscriptions(ctx)
+		activeSubscriptionsCount, sErr := state.CountActiveSubscriptions(ctx, time.Now())
 		if sErr != nil {
 			slog.ErrorContext(ctx,
 				"Failed to fetch active subscriptions count for telemetry",

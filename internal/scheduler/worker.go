@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/anuragthepathak/subscription-management/internal/core/clock"
 	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/anuragthepathak/subscription-management/internal/core/otelattr"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
@@ -29,6 +30,7 @@ type QueueWorker struct {
 	queueName           string
 	concurrency         int
 	name                string
+	getTime             clock.NowFn
 }
 
 // NewQueueWorker creates a new queue worker.
@@ -41,6 +43,7 @@ func NewQueueWorker(
 	concurrency int,
 	queueName string,
 	name string,
+	nowFn clock.NowFn,
 ) *QueueWorker {
 	// Configure the server with appropriate concurrency.
 	server := asynq.NewServer(
@@ -63,6 +66,7 @@ func NewQueueWorker(
 		queueName,
 		concurrency,
 		name,
+		nowFn,
 	}
 }
 
@@ -241,7 +245,7 @@ func (w *QueueWorker) handleSubscriptionRenewal(ctx context.Context, task *asynq
 	}
 
 	// Check if the renewal date is within our window (now to next 4 hours)
-	now := time.Now()
+	now := w.getTime()
 	renewalWindow := now.Add(time.Hour * RenewalHoursBeforeDay)
 	if subscription.ValidTill.After(renewalWindow) {
 		slog.DebugContext(ctx, "Skipping renewal: outside valid window",
@@ -344,7 +348,7 @@ func (w *QueueWorker) handleSubscriptionExpiration(ctx context.Context, task *as
 	}
 
 	// Double-check that the subscription is past its validity date
-	now := time.Now()
+	now := w.getTime()
 	if subscription.ValidTill.After(now) {
 		slog.DebugContext(ctx, "Skipping expiration: subscription still valid",
 			logattr.ValidTill(subscription.ValidTill),

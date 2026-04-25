@@ -188,15 +188,16 @@ func main() {
 		config.NewRateLimit(cf.RateLimiter.App),
 		"app",
 	)
-	jwtService := services.NewJWTService(cf.JWT)
+	jwtService := services.NewJWTService(cf.JWT, time.Now)
 
 	subscriptionService := services.NewSubscriptionService(
 		txnExecutor.WithTransaction,
 		subscriptionRepository,
 		billRepository,
 		metricsPort,
+		time.Now,
 	)
-	userService := services.NewUserService(userRepository, subscriptionService)
+	userService := services.NewUserService(userRepository, subscriptionService, time.Now)
 	authService := services.NewAuthService(userService, jwtService)
 
 	var schedulerAdapter *adapters.Scheduler
@@ -212,6 +213,7 @@ func main() {
 				cf.Scheduler.StartupDelay,
 				cf.Asynq.QueueName,
 				cf.Scheduler.Name,
+				time.Now,
 			)
 			go func() {
 				if startErr := sch.Start(ctx); startErr != nil && startErr != context.Canceled {
@@ -244,6 +246,7 @@ func main() {
 				cf.QueueWorker.Concurrency,
 				cf.Asynq.QueueName,
 				cf.QueueWorker.Name,
+				time.Now,
 			)
 			if startErr := worker.Start(); startErr != nil && startErr != context.Canceled {
 				slog.Error("Queue worker failed",

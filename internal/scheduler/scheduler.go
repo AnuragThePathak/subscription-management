@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/anuragthepathak/subscription-management/internal/core/appctx"
+	"github.com/anuragthepathak/subscription-management/internal/core/clock"
 	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/anuragthepathak/subscription-management/internal/core/otelattr"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
@@ -64,6 +65,7 @@ type SubscriptionScheduler struct {
 	startupDelay        time.Duration
 	queueName           string
 	name                string
+	getTime             clock.NowFn
 	tracer              trace.Tracer
 }
 
@@ -83,6 +85,7 @@ func NewSubscriptionScheduler(
 	startupDelay time.Duration,
 	queueName string,
 	name string,
+	nowFn clock.NowFn,
 ) *SubscriptionScheduler {
 	client := asynq.NewClient(redisConfig)
 	return &SubscriptionScheduler{
@@ -94,6 +97,7 @@ func NewSubscriptionScheduler(
 		startupDelay:        startupDelay,
 		queueName:           queueName,
 		name:                name,
+		getTime:             nowFn,
 		tracer:              otel.Tracer(name),
 	}
 }
@@ -258,7 +262,7 @@ func (s *SubscriptionScheduler) processReminderTask(
 	ctx = observability.EnrichContext(ctx, subscription.UserID.Hex(), subscription.ID.Hex())
 	observability.EnrichSpan(ctx)
 
-	daysBefore := lib.DaysBetween(time.Now(), subscription.ValidTill, nil)
+	daysBefore := lib.DaysBetween(s.getTime(), subscription.ValidTill, nil)
 	span.SetAttributes(otelattr.DaysBefore(daysBefore))
 
 	redisKey := fmt.Sprintf("reminder_sent:%s:%d", subscription.ID.Hex(), daysBefore)
@@ -414,7 +418,7 @@ func (s *SubscriptionScheduler) handleRenewalTasks(ctx context.Context) error {
 // automatic renewal.
 func (s *SubscriptionScheduler) getSubscriptionsDueForRenewal(ctx context.Context) ([]*models.Subscription, error) {
 	// Calculate time range: now to RenewalHoursBeforeDay hours ahead
-	now := time.Now()
+	now := s.getTime()
 	renewalWindowStart := now.Add(time.Hour)
 	renewalWindowEnd := now.Add(time.Hour * RenewalHoursBeforeDay)
 
@@ -456,8 +460,8 @@ func (s *SubscriptionScheduler) scheduleRenewalTask(ctx context.Context, subscri
 	processAt := subscription.ValidTill.Add(-time.Hour * RenewalHoursBeforeDay)
 	// If the process time is in the past (very close to renewal), process
 	// immediately
-	if processAt.Before(time.Now()) {
-		processAt = time.Now()
+	if processAt.Before(s.getTime()) {
+		processAt = s.getTime()
 	}
 	span.SetAttributes(otelattr.ProcessAt(processAt))
 

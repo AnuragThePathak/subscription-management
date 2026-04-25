@@ -23,7 +23,7 @@ import (
 type QueueWorker struct {
 	subscriptionService services.SubscriptionServiceInternal
 	userService         services.UserServiceInternal
-	emailSender         *notifications.EmailSender
+	emailSender         notifications.EmailSender
 	redisClient         redis.UniversalClient
 	server              *asynq.Server
 	queueName           string
@@ -35,7 +35,7 @@ type QueueWorker struct {
 func NewQueueWorker(
 	subscriptionService services.SubscriptionServiceInternal,
 	userService services.UserServiceInternal,
-	emailSender *notifications.EmailSender,
+	emailSender notifications.EmailSender,
 	redisClient redis.UniversalClient,
 	redisConfig asynq.RedisConnOpt,
 	concurrency int,

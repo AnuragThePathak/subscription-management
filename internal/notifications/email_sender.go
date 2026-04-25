@@ -12,6 +12,23 @@ import (
 	"gopkg.in/gomail.v2"
 )
 
+type EmailSender interface {
+	SendReminderEmail(
+		ctx context.Context,
+		toEmail string,
+		userName string,
+		subscription *models.Subscription,
+		daysBefore int,
+	) error
+	SendRenewalConfirmationEmail(
+		ctx context.Context,
+		userEmail string,
+		userName string,
+		subscription *models.Subscription,
+	) error
+	Close() error
+}
+
 // EmailConfig holds email configuration.
 type EmailConfig struct {
 	SMTPHost     string `mapstructure:"smtp_host"`
@@ -26,14 +43,14 @@ type EmailConfig struct {
 }
 
 // EmailSender handles email sending operations.
-type EmailSender struct {
+type emailSender struct {
 	config EmailConfig
 	dialer *gomail.Dialer
 	tracer trace.Tracer
 }
 
 // NewEmailSender creates a new email service.
-func NewEmailSender(config EmailConfig) *EmailSender {
+func NewEmailSender(config EmailConfig) EmailSender {
 	dialer := gomail.NewDialer(
 		config.SMTPHost,
 		config.SMTPPort,
@@ -41,7 +58,7 @@ func NewEmailSender(config EmailConfig) *EmailSender {
 		config.SMTPPassword,
 	)
 
-	return &EmailSender{
+	return &emailSender{
 		config,
 		dialer,
 		otel.Tracer(config.Name),
@@ -49,7 +66,7 @@ func NewEmailSender(config EmailConfig) *EmailSender {
 }
 
 // SendReminderEmail sends a subscription reminder email.
-func (es *EmailSender) SendReminderEmail(
+func (es *emailSender) SendReminderEmail(
 	ctx context.Context,
 	toEmail string,
 	userName string,
@@ -114,7 +131,7 @@ func (es *EmailSender) SendReminderEmail(
 }
 
 // SendRenewalConfirmationEmail sends an email notifying a user that their subscription has been automatically renewed
-func (es *EmailSender) SendRenewalConfirmationEmail(
+func (es *emailSender) SendRenewalConfirmationEmail(
 	ctx context.Context,
 	userEmail string,
 	userName string,
@@ -175,7 +192,7 @@ func (es *EmailSender) SendRenewalConfirmationEmail(
 }
 
 // Close cleans up resources if needed.
-func (es *EmailSender) Close() error {
+func (es *emailSender) Close() error {
 	// Nothing to clean up with gomail.
 	return nil
 }

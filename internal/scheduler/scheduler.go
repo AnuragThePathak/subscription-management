@@ -58,13 +58,18 @@ type ExpirationPayload struct {
 type SubscriptionScheduler struct {
 	subscriptionService services.SubscriptionServiceInternal
 	redisClient         redis.UniversalClient
-	client              *asynq.Client
+	taskEnqueuer        TaskEnqueuer
 	interval            time.Duration
 	reminderDays        []int
 	startupDelay        time.Duration
 	queueName           string
 	name                string
 	tracer              trace.Tracer
+}
+
+type TaskEnqueuer interface {
+	Enqueue(task *asynq.Task, opts ...asynq.Option) (*asynq.TaskInfo, error)
+	Close() error
 }
 
 // NewSubscriptionScheduler creates and initializes a new SubscriptionScheduler
@@ -83,7 +88,7 @@ func NewSubscriptionScheduler(
 	return &SubscriptionScheduler{
 		subscriptionService: subscriptionService,
 		redisClient:         redisClient,
-		client:              client,
+		taskEnqueuer:        client,
 		interval:            interval,
 		reminderDays:        reminderDays,
 		startupDelay:        startupDelay,
@@ -327,7 +332,7 @@ func (s *SubscriptionScheduler) scheduleReminderTask(ctx context.Context, subscr
 	headers := observability.InjectIntoTaskHeaders(ctx)
 	task := asynq.NewTaskWithHeaders(ReminderTask, payloadBytes, headers)
 
-	info, err := s.client.Enqueue(
+	info, err := s.taskEnqueuer.Enqueue(
 		task,
 		asynq.Unique(24*time.Hour),    // Prevent duplicate pending tasks.
 		asynq.Retention(24*time.Hour), // Keep task for 24h after processing.
@@ -456,7 +461,7 @@ func (s *SubscriptionScheduler) scheduleRenewalTask(ctx context.Context, subscri
 	}
 	span.SetAttributes(otelattr.ProcessAt(processAt))
 
-	info, err := s.client.Enqueue(
+	info, err := s.taskEnqueuer.Enqueue(
 		task,
 		asynq.Unique(24*time.Hour),    // Prevent duplicate pending tasks.
 		asynq.Retention(24*time.Hour), // Keep task for 24h after processing.
@@ -592,7 +597,7 @@ func (s *SubscriptionScheduler) scheduleExpirationTask(ctx context.Context, subs
 	task := asynq.NewTaskWithHeaders(ExpirationTask, payloadBytes, headers)
 
 	// Schedule task for immediate processing
-	info, err := s.client.Enqueue(
+	info, err := s.taskEnqueuer.Enqueue(
 		task,
 		asynq.Unique(24*time.Hour),    // Prevent duplicate pending tasks
 		asynq.Retention(24*time.Hour), // Keep task for 24h after processing
@@ -623,5 +628,5 @@ func (s *SubscriptionScheduler) scheduleExpirationTask(ctx context.Context, subs
 
 // Close cleanly shuts down the scheduler.
 func (s *SubscriptionScheduler) Close() error {
-	return s.client.Close()
+	return s.taskEnqueuer.Close()
 }

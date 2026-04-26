@@ -61,7 +61,15 @@ func CalcRenewalDate(start time.Time, frequency models.Frequency) time.Time {
 			start.Location(),
 		)
 	case models.Yearly:
-		return start.AddDate(1, 0, 0)
+		nextYear := start.AddDate(1, 0, 0)
+
+		// If we started in February but Go normalized us into March,
+		// it means we tried to land on Feb 29th in a non-leap year.
+		if start.Month() == time.February && nextYear.Month() == time.March {
+			// Subtract exactly one day to clamp it back to February 28th
+			return nextYear.AddDate(0, 0, -1)
+		}
+		return nextYear
 	default:
 		return start // fallback, no change
 	}

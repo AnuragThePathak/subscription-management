@@ -15,6 +15,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
+//go:generate mockery
 type BillRepository interface {
 	Create(context.Context, *models.Bill) (*models.Bill, error)
 	GetByID(context.Context, bson.ObjectID) (*models.Bill, error)

@@ -15,6 +15,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
+//go:generate mockery
 type UserRepository interface {
 	Create(context.Context, *models.User) (*models.User, error)
 	FindByEmail(context.Context, string) (*models.User, error)

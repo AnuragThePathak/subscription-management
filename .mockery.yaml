@@ -1,0 +1,30 @@
+# .mockery.yaml  (repo root)
+with-expecter: true
+log-level: warn
+
+packages:
+  github.com/anuragthepathak/subscription-management/internal/domain/repositories:
+    config:
+      dir: "{{.InterfaceDir}}/mocks"
+      outpkg: mocks
+    interfaces:
+      UserRepository:
+      BillRepository:
+      SubscriptionRepository:
+      TxnExecutor:
+
+  # github.com/anuragthepathak/subscription-management/internal/domain/services:
+  #   config:
+  #     dir: "{{.InterfaceDir}}/mocks"
+  #     outpkg: mocks
+  #   interfaces:
+  #     UserService:
+  #     UserServiceExternal:
+  #     UserServiceInternal:
+  #     AuthService:
+  #     JWTService:
+  #     RateLimiterService:
+  #     SubscriptionService:
+  #     SubscriptionServiceExternal:
+  #     SubscriptionServiceInternal:
+  #     SubscriptionMetrics:

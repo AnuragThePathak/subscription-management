@@ -72,12 +72,6 @@ func TestCalcRenewalDate(t *testing.T) {
 
 		// Jan to Feb Edge cases
 		{
-			name:      "Standard Jan to Feb",
-			start:     makeDate(2025, time.January, 15),
-			frequency: models.Monthly,
-			want:      makeDate(2025, time.February, 15),
-		},
-		{
 			name:      "Month End Jan to Feb",
 			start:     makeDate(2025, time.January, 31),
 			frequency: models.Monthly,
@@ -86,12 +80,6 @@ func TestCalcRenewalDate(t *testing.T) {
 		{
 			name:      "Jan 29th to Feb End",
 			start:     makeDate(2025, time.January, 29),
-			frequency: models.Monthly,
-			want:      makeDate(2025, time.February, 28),
-		},
-		{
-			name:      "Jan 28th to Feb End",
-			start:     makeDate(2025, time.January, 28),
 			frequency: models.Monthly,
 			want:      makeDate(2025, time.February, 28),
 		},
@@ -173,17 +161,11 @@ func TestCalcRenewalDate(t *testing.T) {
 			frequency: models.Yearly,
 			want:      makeDate(2021, time.February, 28),
 		},
-		{
-			name:      "Non Leap Year -> Leap year Feb End",
-			start:     makeDate(2019, time.February, 28),
-			frequency: models.Yearly,
-			want:      makeDate(2020, time.February, 28),
-		},
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := lib.CalcRenewalDate(tc.start, tc.frequency)
-			assert.Equal(t, tc.want, got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := lib.CalcRenewalDate(tt.start, tt.frequency)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

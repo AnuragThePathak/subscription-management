@@ -69,30 +69,21 @@ func Count(ctx context.Context, collection *mongo.Collection, filter bson.M, opt
 
 // BuildMongoURI constructs a connection string dynamically based on the host type.
 func BuildMongoURI(host string, port int, username, password, dbName, authSource string) string {
-	// Escaping ensures special characters in credentials don't break the URI structure.
-	escapedUsername := url.PathEscape(username)
-	escapedPassword := url.PathEscape(password)
-
-	// If the host is an Atlas cluster, use the SRV protocol.
-	// The port is intentionally omitted because DNS handles it.
-	if strings.HasSuffix(host, "mongodb.net") {
-		return fmt.Sprintf("mongodb+srv://%s:%s@%s/%s?authSource=%s",
-			escapedUsername,
-			escapedPassword,
-			host,
-			dbName,
-			authSource,
-		)
+	// Construct the base URL using Go's native struct
+	u := &url.URL{
+		Scheme:   "mongodb",
+		User:     url.UserPassword(username, password), // This safely triggers the hidden password escaper!
+		Host:     fmt.Sprintf("%s:%d", host, port),
+		Path:     "/" + dbName,
+		RawQuery: "authSource=" + authSource,
 	}
 
-	// For standard, self-hosted, or Docker databases, use the standard protocol
-	// and explicitly include the configured port (defaulting to 27017).
-	return fmt.Sprintf("mongodb://%s:%s@%s:%d/%s?authSource=%s",
-		escapedUsername,
-		escapedPassword,
-		host,
-		port,
-		dbName,
-		authSource,
-	)
+	// Handle the Atlas SRV protocol vs Standard protocol
+	if strings.HasSuffix(host, "mongodb.net") {
+		u.Scheme = "mongodb+srv"
+		u.Host = host // SRV drops the port
+	}
+
+	// Let Go compile the final, perfectly escaped string
+	return u.String()
 }

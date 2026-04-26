@@ -12,6 +12,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+//go:generate mockery
 // AuthService provides authentication operations.
 type AuthService interface {
 	Login(ctx context.Context, loginReq models.LoginRequest) (*models.TokenResponse, error)

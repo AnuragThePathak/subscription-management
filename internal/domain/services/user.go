@@ -14,6 +14,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+//go:generate mockery
 type UserServiceExternal interface {
 	CreateUser(context.Context, *models.User) (*models.User, error)
 	GetAllUsers(context.Context) ([]*models.User, error)

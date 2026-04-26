@@ -14,6 +14,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
+//go:generate mockery
 type SubscriptionServiceExternal interface {
 	CreateSubscription(context.Context, *models.Subscription, string) (*models.Subscription, error)
 	GetAllSubscriptions(context.Context) ([]*models.Subscription, error)

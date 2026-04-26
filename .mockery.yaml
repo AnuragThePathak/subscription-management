@@ -13,18 +13,18 @@ packages:
       SubscriptionRepository:
       TxnExecutor:
 
-  # github.com/anuragthepathak/subscription-management/internal/domain/services:
-  #   config:
-  #     dir: "{{.InterfaceDir}}/mocks"
-  #     outpkg: mocks
-  #   interfaces:
-  #     UserService:
-  #     UserServiceExternal:
-  #     UserServiceInternal:
-  #     AuthService:
-  #     JWTService:
-  #     RateLimiterService:
-  #     SubscriptionService:
-  #     SubscriptionServiceExternal:
-  #     SubscriptionServiceInternal:
-  #     SubscriptionMetrics:
+  github.com/anuragthepathak/subscription-management/internal/domain/services:
+    config:
+      dir: "{{.InterfaceDir}}/mocks"
+      outpkg: mocks
+    interfaces:
+      # UserService:
+      UserServiceExternal:
+      UserServiceInternal:
+      AuthService:
+      JWTService:
+      RateLimiterService:
+      # SubscriptionService:
+      SubscriptionServiceExternal:
+      SubscriptionServiceInternal:
+      SubscriptionMetrics:

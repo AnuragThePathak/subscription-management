@@ -9,6 +9,7 @@ import (
 	"github.com/go-redis/redis_rate/v10"
 )
 
+//go:generate mockery
 // RateLimiterService defines the interface for rate limiting operations.
 type RateLimiterService interface {
 	// Allowed checks if the given IP has not exceeded the rate limit.

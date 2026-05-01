@@ -11,7 +11,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-//go:generate mockery
 // JWTService handles JWT token operations.
 type JWTService interface {
 	GenerateTokens(userID, email string) (*models.TokenResponse, error)

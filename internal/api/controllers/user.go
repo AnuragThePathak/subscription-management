@@ -5,7 +5,6 @@ import (
 
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/endpoint"
 	"github.com/anuragthepathak/subscription-management/internal/core/appctx"
-	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/anuragthepathak/subscription-management/internal/domain/services"
 	"github.com/go-chi/chi/v5"
 )
@@ -21,7 +20,6 @@ func NewUserController(userService services.UserServiceExternal, requestHandler 
 	r := chi.NewRouter()
 	r.Get("/", c.getAllUsers)
 	r.Get("/{id}", c.getUserByID)
-	r.Put("/{id}", c.updateUser)
 	r.Delete("/{id}", c.deleteUser)
 	return r
 }
@@ -46,22 +44,6 @@ func (c *userController) getUserByID(w http.ResponseWriter, r *http.Request) {
 		R: r,
 		EndpointLogic: func() (any, error) {
 			return endpoint.ToResponse(c.userService.GetUserByID(r.Context(), id, claimedUserID))
-		},
-		SuccessCode: http.StatusOK,
-	})
-}
-
-func (c *userController) updateUser(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	claimedUserID, _ := appctx.GetUserID(r.Context())
-	updateReq := models.UserUpdateRequest{}
-
-	c.requestHandler.ServeRequest(endpoint.InternalRequest{
-		W:          w,
-		R:          r,
-		ReqBodyObj: &updateReq,
-		EndpointLogic: func() (any, error) {
-			return endpoint.ToResponse(c.userService.UpdateUser(r.Context(), id, &updateReq, claimedUserID))
 		},
 		SuccessCode: http.StatusOK,
 	})

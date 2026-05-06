@@ -50,10 +50,3 @@ func (u *User) ToResponse() *UserResponse {
 	}
 }
 
-// UserUpdateRequest represents the data structure for user update API requests.
-type UserUpdateRequest struct {
-	Name            string `json:"name,omitempty"`
-	Email           string `json:"email,omitempty" validate:"omitempty,email"`
-	CurrentPassword string `json:"currentPassword,omitempty"`
-	NewPassword     string `json:"newPassword,omitempty" validate:"omitempty,min=8"`
-}

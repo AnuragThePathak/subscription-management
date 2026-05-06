@@ -18,7 +18,6 @@ type UserServiceExternal interface {
 	CreateUser(context.Context, *models.User) (*models.User, error)
 	GetAllUsers(context.Context) ([]*models.User, error)
 	GetUserByID(context.Context, string, string) (*models.User, error)
-	UpdateUser(context.Context, string, *models.UserUpdateRequest, string) (*models.User, error)
 	DeleteUser(context.Context, string, string) error
 }
 
@@ -31,12 +30,6 @@ type UserService interface {
 	UserServiceExternal
 	UserServiceInternal
 }
-
-const (
-	userFieldName     = "name"
-	userFieldEmail    = "email"
-	userFieldPassword = "password"
-)
 
 type userService struct {
 	userRepository              repositories.UserRepository
@@ -119,85 +112,6 @@ func (us *userService) GetUserByID(ctx context.Context, id string, claimedUserID
 	}
 
 	return us.userRepository.FindByID(ctx, userID)
-}
-
-func (us *userService) UpdateUser(ctx context.Context, id string, updateReq *models.UserUpdateRequest, claimedUserID string) (*models.User, error) {
-	if id != claimedUserID {
-		return nil, apperror.NewForbiddenError("You can only update your own profile")
-	}
-	// Convert ID string to ObjectID
-	userID, err := bson.ObjectIDFromHex(id)
-	if err != nil {
-		return nil, apperror.NewUnauthorizedError("Invalid user ID")
-	}
-
-	// Get the complete user record including password
-	existingUser, err := us.userRepository.FindByID(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	// If email is being updated, check if it's available
-	if updateReq.Email != "" && updateReq.Email != existingUser.Email {
-		emailUser, emailErr := us.userRepository.FindByEmail(ctx, updateReq.Email)
-		if emailUser != nil {
-			return nil, apperror.NewConflictError("Email already in use")
-		}
-		if emailErr != nil {
-			if appErr, ok := errors.AsType[apperror.AppError](emailErr); ok {
-				if appErr.Code() != apperror.ErrNotFound {
-					return nil, appErr
-				}
-			} else {
-				return nil, emailErr
-			}
-		}
-	}
-
-	var updatedFields []string
-
-	// Update fields
-	if updateReq.Name != "" && updateReq.Name != existingUser.Name {
-		existingUser.Name = updateReq.Name
-		updatedFields = append(updatedFields, userFieldName)
-	}
-	if updateReq.Email != "" && updateReq.Email != existingUser.Email {
-		existingUser.Email = updateReq.Email
-		updatedFields = append(updatedFields, userFieldEmail)
-	}
-
-	// Handle password update with verification
-	if updateReq.NewPassword != "" {
-		// Current password must be provided for password updates
-		if updateReq.CurrentPassword == "" {
-			return nil, apperror.NewBadRequestError("Current password required to update password")
-		}
-
-		// Verify current password
-		hashErr := bcrypt.CompareHashAndPassword([]byte(existingUser.Password), []byte(updateReq.CurrentPassword))
-		if hashErr != nil {
-			return nil, apperror.NewUnauthorizedError("Current password is incorrect")
-		}
-
-		// Hash new password
-		hashedPassword, hashErr := bcrypt.GenerateFromPassword([]byte(updateReq.NewPassword), 10)
-		if hashErr != nil {
-			return nil, apperror.NewInternalError(hashErr)
-		}
-		existingUser.Password = string(hashedPassword)
-		updatedFields = append(updatedFields, userFieldPassword)
-	}
-
-	existingUser.UpdatedAt = us.getTime()
-
-	// Save the updated user
-	result, err := us.userRepository.Update(ctx, existingUser)
-	if err != nil {
-		return nil, err
-	}
-
-	slog.InfoContext(ctx, "User updated", logattr.UpdatedFields(updatedFields))
-	return result, nil
 }
 
 func (us *userService) DeleteUser(ctx context.Context, id string, claimedUserID string) error {

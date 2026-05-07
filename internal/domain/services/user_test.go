@@ -23,6 +23,34 @@ import (
 // mockTime is a stable timestamp used across tests that need deterministic time.
 var mockTime = time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 
+// defaultUserID is a stable, deterministic ObjectID used across all tests.
+var defaultUserID = bson.NewObjectID()
+var defaultUserHex = defaultUserID.Hex()
+var defaultUserEmail = "alice@example.com"
+
+// validCreateInput returns a pristine user struct meant for CreateUser input.
+// It lacks an ID and timestamps, and has a plain-text password.
+func validCreateInput() *models.User {
+	return &models.User{
+		Name:     "Alice",
+		Email:    defaultUserEmail,
+		Password: "password123",
+	}
+}
+
+// validUser returns a fully hydrated user struct as it would appear in the DB.
+// It has a populated ID, timestamps, and a dummy hashed password.
+func validUser() *models.User {
+	return &models.User{
+		ID:        defaultUserID,
+		Name:      "Alice",
+		Email:     defaultUserEmail,
+		Password:  "hashed-password",
+		CreatedAt: mockTime,
+		UpdatedAt: mockTime,
+	}
+}
+
 // newService is a convenience constructor that wires up a userService with the
 // provided mocks so individual tests don't need to repeat the wiring.
 func newService(
@@ -37,16 +65,22 @@ func newService(
 // ---------------------------------------------------------------------------
 
 func Test_userService_CreateUser(t *testing.T) {
-	baseUser := models.User{
-		Name:     "Alice",
-		Email:    "alice@example.com",
-		Password: "password123",
-	}
-	validUser := func() *models.User {
-		u := baseUser
-		return &u
-	}
+	buildMatcher := func(input models.User) any {
+		return mock.MatchedBy(func(u *models.User) bool {
+			// Check exact matches for known data
+			isStaticValid := u.Name == input.Name &&
+				u.Email == input.Email &&
+				u.CreatedAt.Equal(mockTime) &&
+				u.UpdatedAt.Equal(mockTime)
 
+			// Check that dynamic data was generated
+			isDynamicValid := u.ID != bson.NilObjectID &&
+				u.Password != input.Password &&
+				u.Password != ""
+
+			return isStaticValid && isDynamicValid
+		})
+	}
 	tests := []struct {
 		name            string
 		input           *models.User
@@ -62,29 +96,15 @@ func Test_userService_CreateUser(t *testing.T) {
 			// by returning ErrNotFound, the Service correctly bypasses the error
 			// block and proceeds to create the user.
 			name:  "success - new user created (bypasses ErrNotFound)",
-			input: validUser(),
+			input: validCreateInput(),
 			setupMocks: func(repo *repomocks.MockUserRepository, input models.User) {
 				repo.EXPECT().
 					FindByEmail(mock.Anything, input.Email).
 					Return(nil, apperror.NewNotFoundError("not found")).
 					Once()
 
-				matcher := mock.MatchedBy(func(u *models.User) bool {
-					// 1. Check exact matches for known data
-					isStaticValid := u.Name == input.Name &&
-						u.Email == input.Email &&
-						u.CreatedAt.Equal(mockTime) &&
-						u.UpdatedAt.Equal(mockTime)
-
-					// 2. Check that dynamic data was generated
-					isDynamicValid := u.ID != bson.NilObjectID &&
-						u.Password != input.Password &&
-						u.Password != ""
-
-					return isStaticValid && isDynamicValid
-				})
 				repo.EXPECT().
-					Create(mock.Anything, matcher).
+					Create(mock.Anything, buildMatcher(input)).
 					RunAndReturn(func(_ context.Context, u *models.User) (*models.User, error) {
 						return u, nil // echo the user back, as the real repo does
 					}).
@@ -106,7 +126,7 @@ func Test_userService_CreateUser(t *testing.T) {
 		{
 			// Email is already registered → conflict error.
 			name:  "error - email already in use",
-			input: validUser(),
+			input: validCreateInput(),
 			setupMocks: func(repo *repomocks.MockUserRepository, input models.User) {
 				repo.EXPECT().
 					FindByEmail(mock.Anything, input.Email).
@@ -120,7 +140,7 @@ func Test_userService_CreateUser(t *testing.T) {
 		{
 			// FindByEmail fails with a non-NotFound app error (e.g. DB error).
 			name:  "error - repository FindByEmail returns db error (non-NotFound AppError)",
-			input: validUser(),
+			input: validCreateInput(),
 			setupMocks: func(repo *repomocks.MockUserRepository, input models.User) {
 				repo.EXPECT().
 					FindByEmail(mock.Anything, input.Email).
@@ -134,7 +154,7 @@ func Test_userService_CreateUser(t *testing.T) {
 		{
 			// FindByEmail fails with an unknown error (not an AppError)
 			name:  "error - repository FindByEmail returns unknown raw error",
-			input: validUser(),
+			input: validCreateInput(),
 			setupMocks: func(repo *repomocks.MockUserRepository, input models.User) {
 				repo.EXPECT().
 					FindByEmail(mock.Anything, input.Email).
@@ -147,10 +167,10 @@ func Test_userService_CreateUser(t *testing.T) {
 			// Password hashing fails (password too long)
 			name: "error - password hashing fails (password too long)",
 			input: func() *models.User {
-				u := baseUser
+				u := validCreateInput()
 				// bcrypt fails if the password is strictly > 72 bytes
 				u.Password = string(make([]byte, 73))
-				return &u
+				return u
 			}(),
 			setupMocks: func(repo *repomocks.MockUserRepository, input models.User) {
 				// The email check passes
@@ -168,29 +188,15 @@ func Test_userService_CreateUser(t *testing.T) {
 		{
 			// repo.Create fails after the email check passes due to AppError.
 			name:  "error - repository Create fails due to error of type AppError",
-			input: validUser(),
+			input: validCreateInput(),
 			setupMocks: func(repo *repomocks.MockUserRepository, input models.User) {
 				repo.EXPECT().
 					FindByEmail(mock.Anything, input.Email).
 					Return(nil, apperror.NewNotFoundError("not found")).
 					Once()
 
-				matcher := mock.MatchedBy(func(u *models.User) bool {
-					// 1. Check exact matches for known data
-					isStaticValid := u.Name == input.Name &&
-						u.Email == input.Email &&
-						u.CreatedAt.Equal(mockTime) &&
-						u.UpdatedAt.Equal(mockTime)
-
-					// 2. Check that dynamic data was generated
-					isDynamicValid := u.ID != bson.NilObjectID &&
-						u.Password != input.Password &&
-						u.Password != ""
-
-					return isStaticValid && isDynamicValid
-				})
 				repo.EXPECT().
-					Create(mock.Anything, matcher).
+					Create(mock.Anything, buildMatcher(input)).
 					Return(nil, apperror.NewDBError(errors.New("insert failed"))).
 					Once()
 			},
@@ -201,29 +207,15 @@ func Test_userService_CreateUser(t *testing.T) {
 		{
 			// repo.Create fails after the email check passes due to unknown error type.
 			name:  "error - repository Create fails due to error of unknown type",
-			input: validUser(),
+			input: validCreateInput(),
 			setupMocks: func(repo *repomocks.MockUserRepository, input models.User) {
 				repo.EXPECT().
 					FindByEmail(mock.Anything, input.Email).
 					Return(nil, apperror.NewNotFoundError("not found")).
 					Once()
 
-				matcher := mock.MatchedBy(func(u *models.User) bool {
-					// 1. Check exact matches for known data
-					isStaticValid := u.Name == input.Name &&
-						u.Email == input.Email &&
-						u.CreatedAt.Equal(mockTime) &&
-						u.UpdatedAt.Equal(mockTime)
-
-					// 2. Check that dynamic data was generated
-					isDynamicValid := u.ID != bson.NilObjectID &&
-						u.Password != input.Password &&
-						u.Password != ""
-
-					return isStaticValid && isDynamicValid
-				})
 				repo.EXPECT().
-					Create(mock.Anything, matcher).
+					Create(mock.Anything, buildMatcher(input)).
 					Return(nil, errors.New("connection-lost")).
 					Once()
 			},
@@ -276,31 +268,13 @@ func Test_userService_CreateUser(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func Test_userService_GetAllUsers(t *testing.T) {
-	baseUsers := []*models.User{
-		{
-			ID:        bson.NewObjectID(),
-			Name:      "Bob",
-			Email:     "bob@example.com",
-			Password:  "fake-hash",
-			CreatedAt: mockTime,
-			UpdatedAt: mockTime,
-		},
-		{
-			ID:        bson.NewObjectID(),
-			Name:      "Alice",
-			Email:     "alice@emample.com",
-			Password:  "fake-hash-1",
-			CreatedAt: mockTime,
-			UpdatedAt: mockTime,
-		},
-	}
+	user2ID := bson.NewObjectID()
 	validUsers := func() []*models.User {
-		users := make([]*models.User, len(baseUsers))
-		for i, user := range baseUsers {
-			u := *user
-			users[i] = &u
-		}
-		return users
+		user1 := validUser()
+		user2 := validUser()
+		user2.ID = user2ID
+		user2.Email = "new-email@example.com"
+		return []*models.User{user1, user2}
 	}
 
 	tests := []struct {
@@ -320,7 +294,7 @@ func Test_userService_GetAllUsers(t *testing.T) {
 					Once()
 			},
 			wantErr:   false,
-			wantUsers: baseUsers,
+			wantUsers: validUsers(),
 		},
 		// Repo returns a DB error
 		{
@@ -374,23 +348,6 @@ func Test_userService_GetAllUsers(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func Test_userService_GetUserByID(t *testing.T) {
-	// A valid MongoDB ObjectID hex string and its parsed form.
-	validID := bson.NewObjectID()
-	validHex := validID.Hex()
-
-	baseUser := models.User{
-		ID:        validID,
-		Name:      "Bob",
-		Email:     "bob@example.com",
-		Password:  "fake-hash",
-		CreatedAt: mockTime,
-		UpdatedAt: mockTime,
-	}
-	validUser := func() *models.User {
-		u := baseUser
-		return &u
-	}
-
 	tests := []struct {
 		name          string
 		id            string
@@ -404,21 +361,21 @@ func Test_userService_GetUserByID(t *testing.T) {
 		{
 			// Caller owns the resource and ID is valid.
 			name:          "success - owner retrieves own profile",
-			id:            validHex,
-			claimedUserID: validHex,
-			parsedID:      validID,
+			id:            defaultUserHex,
+			claimedUserID: defaultUserHex,
+			parsedID:      defaultUserID,
 			setupMocks: func(repo *repomocks.MockUserRepository, id bson.ObjectID) {
 				repo.EXPECT().
 					FindByID(mock.Anything, id).
 					Return(validUser(), nil).
 					Once()
 			},
-			wantUser: &baseUser,
+			wantUser: validUser(),
 		},
 		{
 			// id != claimedUserID → forbidden before any repo call.
 			name:          "error - caller does not own resource",
-			id:            validHex,
+			id:            defaultUserHex,
 			claimedUserID: bson.NewObjectID().Hex(), // different user
 			setupMocks:    func(_ *repomocks.MockUserRepository, _ bson.ObjectID) {},
 			wantErr:       true,
@@ -436,9 +393,9 @@ func Test_userService_GetUserByID(t *testing.T) {
 		{
 			// Repo returns a not-found error.
 			name:          "error - user not found in repository",
-			id:            validHex,
-			claimedUserID: validHex,
-			parsedID:      validID,
+			id:            defaultUserHex,
+			claimedUserID: defaultUserHex,
+			parsedID:      defaultUserID,
 			setupMocks: func(repo *repomocks.MockUserRepository, id bson.ObjectID) {
 				repo.EXPECT().
 					FindByID(mock.Anything, id).
@@ -485,9 +442,6 @@ func Test_userService_GetUserByID(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func Test_userService_DeleteUser(t *testing.T) {
-	validID := bson.NewObjectID()
-	validHex := validID.Hex()
-
 	tests := []struct {
 		name          string
 		id            string
@@ -501,9 +455,9 @@ func Test_userService_DeleteUser(t *testing.T) {
 		{
 			// Happy path: caller owns the account, no active subs, repo.Delete succeeds.
 			name:          "success - user with no active subscriptions deleted",
-			id:            validHex,
-			claimedUserID: validHex,
-			parsedID:      validID,
+			id:            defaultUserHex,
+			claimedUserID: defaultUserHex,
+			parsedID:      defaultUserID,
 			setupSubSvc: func(subSvc *svcmocks.MockSubscriptionServiceInternal, id bson.ObjectID) {
 				subSvc.EXPECT().
 					HasActiveSubscriptionsInternal(mock.Anything, id).
@@ -520,7 +474,7 @@ func Test_userService_DeleteUser(t *testing.T) {
 		{
 			// Caller tries to delete another user's account.
 			name:          "error - caller does not own the account",
-			id:            validHex,
+			id:            defaultUserHex,
 			claimedUserID: bson.NewObjectID().Hex(),
 			setupSubSvc:   func(_ *svcmocks.MockSubscriptionServiceInternal, _ bson.ObjectID) {},
 			setupRepo:     func(_ *repomocks.MockUserRepository, _ bson.ObjectID) {},
@@ -540,9 +494,9 @@ func Test_userService_DeleteUser(t *testing.T) {
 		{
 			// User has at least one active subscription → deletion blocked.
 			name:          "error - user has active subscriptions",
-			id:            validHex,
-			claimedUserID: validHex,
-			parsedID:      validID,
+			id:            defaultUserHex,
+			claimedUserID: defaultUserHex,
+			parsedID:      defaultUserID,
 			setupSubSvc: func(subSvc *svcmocks.MockSubscriptionServiceInternal, id bson.ObjectID) {
 				subSvc.EXPECT().
 					HasActiveSubscriptionsInternal(mock.Anything, id).
@@ -556,9 +510,9 @@ func Test_userService_DeleteUser(t *testing.T) {
 		{
 			// HasActiveSubscriptionsInternal itself returns an error.
 			name:          "error - subscription service returns error",
-			id:            validHex,
-			claimedUserID: validHex,
-			parsedID: validID,
+			id:            defaultUserHex,
+			claimedUserID: defaultUserHex,
+			parsedID:      defaultUserID,
 			setupSubSvc: func(subSvc *svcmocks.MockSubscriptionServiceInternal, id bson.ObjectID) {
 				subSvc.EXPECT().
 					HasActiveSubscriptionsInternal(mock.Anything, id).
@@ -572,9 +526,9 @@ func Test_userService_DeleteUser(t *testing.T) {
 		{
 			// repo.Delete fails (e.g. user was already deleted concurrently).
 			name:          "error - repository Delete returns not found",
-			id:            validHex,
-			claimedUserID: validHex,
-			parsedID: validID,
+			id:            defaultUserHex,
+			claimedUserID: defaultUserHex,
+			parsedID:      defaultUserID,
 			setupSubSvc: func(subSvc *svcmocks.MockSubscriptionServiceInternal, id bson.ObjectID) {
 				subSvc.EXPECT().
 					HasActiveSubscriptionsInternal(mock.Anything, id).
@@ -629,20 +583,6 @@ func Test_userService_DeleteUser(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestUserService_FetchUserByIDInternal(t *testing.T) {
-	validID := bson.NewObjectID()
-	baseUser := models.User{
-		ID:        validID,
-		Name:      "Bob",
-		Email:     "bob@example.com",
-		Password:  "fake-hash",
-		CreatedAt: mockTime,
-		UpdatedAt: mockTime,
-	}
-	validUser := func() *models.User {
-		u := baseUser
-		return &u
-	}
-
 	tests := []struct {
 		name        string
 		id          bson.ObjectID
@@ -654,7 +594,7 @@ func TestUserService_FetchUserByIDInternal(t *testing.T) {
 		{
 			// Success - repository FindByID returns the data
 			name: "success - repository FindByID returns the data",
-			id:   validID,
+			id:   defaultUserID,
 			setupMocks: func(repo *repomocks.MockUserRepository, id bson.ObjectID) {
 				repo.EXPECT().
 					FindByID(mock.Anything, id).
@@ -662,12 +602,12 @@ func TestUserService_FetchUserByIDInternal(t *testing.T) {
 					Once()
 			},
 			wantErr:  false,
-			wantUser: &baseUser,
+			wantUser: validUser(),
 		},
 		{
 			// Repo returns a DB error
 			name: "error - repository FindByID returns db error",
-			id:   validID,
+			id:   defaultUserID,
 			setupMocks: func(repo *repomocks.MockUserRepository, id bson.ObjectID) {
 				repo.EXPECT().
 					FindByID(mock.Anything, id).
@@ -714,21 +654,6 @@ func TestUserService_FetchUserByIDInternal(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestUserService_FindUserByEmailInternal(t *testing.T) {
-	validID := bson.NewObjectID()
-	validEmail := "[EMAIL_ADDRESS]"
-	baseUser := models.User{
-		ID:        validID,
-		Name:      "Bob",
-		Email:     validEmail,
-		Password:  "fake-hash",
-		CreatedAt: mockTime,
-		UpdatedAt: mockTime,
-	}
-	validUser := func() *models.User {
-		u := baseUser
-		return &u
-	}
-
 	tests := []struct {
 		name        string
 		email       string
@@ -740,19 +665,19 @@ func TestUserService_FindUserByEmailInternal(t *testing.T) {
 		{
 			// Success - repo.FindByEmail returns the data
 			name:  "success - repository FindByEmail returns the data",
-			email: validEmail,
+			email: defaultUserEmail,
 			setupMocks: func(repo *repomocks.MockUserRepository, email string) {
 				repo.EXPECT().
 					FindByEmail(mock.Anything, email).
 					Return(validUser(), nil).
 					Once()
 			},
-			wantUser: &baseUser,
+			wantUser: validUser(),
 		},
 		{
 			// Repo returns a DB error
 			name:  "error - repository FindByEmail returns db error",
-			email: validEmail,
+			email: defaultUserEmail,
 			setupMocks: func(repo *repomocks.MockUserRepository, email string) {
 				repo.EXPECT().
 					FindByEmail(mock.Anything, email).

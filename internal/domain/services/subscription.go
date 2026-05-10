@@ -81,10 +81,6 @@ func (s *subscriptionService) CreateSubscription(ctx context.Context, subscripti
 	subscription.ValidTill = lib.CalcRenewalDate(today, subscription.Frequency)
 	// Create the subscription
 	subscription.Status = models.Active
-	// Set default values
-	if subscription.Currency == "" {
-		subscription.Currency = models.USD
-	}
 	// Continue with validation
 	if err = subscription.Validate(now); err != nil {
 		return nil, err

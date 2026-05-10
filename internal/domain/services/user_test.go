@@ -16,28 +16,6 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-// mockTime is a stable timestamp used across tests that need deterministic time.
-var mockTime = time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
-
-// defaultUserID is a stable, deterministic ObjectID used across all tests.
-var defaultUserID = bson.NewObjectID()
-var defaultUserHex = defaultUserID.Hex()
-var defaultUserEmail = "alice@example.com"
-
-// validCreateInput returns a pristine user struct meant for CreateUser input.
-// It lacks an ID and timestamps, and has a plain-text password.
-func validCreateInput() *models.User {
-	return &models.User{
-		Name:     "Alice",
-		Email:    defaultUserEmail,
-		Password: "password123",
-	}
-}
-
 // validUser returns a fully hydrated user struct as it would appear in the DB.
 // It has a populated ID, timestamps, and a dummy hashed password.
 func validUser() *models.User {
@@ -65,6 +43,15 @@ func newService(
 // ---------------------------------------------------------------------------
 
 func Test_userService_CreateUser(t *testing.T) {
+	// validInput returns a pristine user struct meant for CreateUser input.
+	// It lacks an ID and timestamps, and has a plain-text password.
+	validInput := func() *models.User {
+		return &models.User{
+			Name:     "Alice",
+			Email:    defaultUserEmail,
+			Password: "password123",
+		}
+	}
 	buildMatcher := func(input models.User) any {
 		return mock.MatchedBy(func(u *models.User) bool {
 			// Check exact matches for known data
@@ -96,7 +83,7 @@ func Test_userService_CreateUser(t *testing.T) {
 			// by returning ErrNotFound, the Service correctly bypasses the error
 			// block and proceeds to create the user.
 			name:  "success - new user created (bypasses ErrNotFound)",
-			input: validCreateInput(),
+			input: validInput(),
 			setupMocks: func(repo *repomocks.MockUserRepository, input models.User) {
 				repo.EXPECT().
 					FindByEmail(mock.Anything, input.Email).
@@ -112,21 +99,21 @@ func Test_userService_CreateUser(t *testing.T) {
 			},
 			assertResult: func(t *testing.T, input models.User, got *models.User) {
 				t.Helper()
-				assert.Equal(t, input.Email, got.Email)
+				// ID must have been assigned
+				assert.NotZero(t, got.ID)
 				assert.Equal(t, input.Name, got.Name)
-				// Password must have been hashed; plain text must not be stored.
+				assert.Equal(t, input.Email, got.Email)
+				// Password must have been hashed; plain text must not be stored
 				assert.NotEqual(t, input.Password, got.Password, "password must be hashed")
 				// Timestamps must match the fixed clock.
 				assert.Equal(t, mockTime, got.CreatedAt)
 				assert.Equal(t, mockTime, got.UpdatedAt)
-				// ID must have been assigned.
-				assert.NotEqual(t, bson.NilObjectID, got.ID)
 			},
 		},
 		{
 			// Email is already registered → conflict error.
 			name:  "error - email already in use",
-			input: validCreateInput(),
+			input: validInput(),
 			setupMocks: func(repo *repomocks.MockUserRepository, input models.User) {
 				repo.EXPECT().
 					FindByEmail(mock.Anything, input.Email).
@@ -140,7 +127,7 @@ func Test_userService_CreateUser(t *testing.T) {
 		{
 			// FindByEmail fails with a non-NotFound app error (e.g. DB error).
 			name:  "error - repository FindByEmail returns db error (non-NotFound AppError)",
-			input: validCreateInput(),
+			input: validInput(),
 			setupMocks: func(repo *repomocks.MockUserRepository, input models.User) {
 				repo.EXPECT().
 					FindByEmail(mock.Anything, input.Email).
@@ -154,7 +141,7 @@ func Test_userService_CreateUser(t *testing.T) {
 		{
 			// FindByEmail fails with an unknown error (not an AppError)
 			name:  "error - repository FindByEmail returns unknown raw error",
-			input: validCreateInput(),
+			input: validInput(),
 			setupMocks: func(repo *repomocks.MockUserRepository, input models.User) {
 				repo.EXPECT().
 					FindByEmail(mock.Anything, input.Email).
@@ -167,7 +154,7 @@ func Test_userService_CreateUser(t *testing.T) {
 			// Password hashing fails (password too long)
 			name: "error - password hashing fails (password too long)",
 			input: func() *models.User {
-				u := validCreateInput()
+				u := validInput()
 				// bcrypt fails if the password is strictly > 72 bytes
 				u.Password = string(make([]byte, 73))
 				return u
@@ -188,7 +175,7 @@ func Test_userService_CreateUser(t *testing.T) {
 		{
 			// repo.Create fails after the email check passes due to AppError.
 			name:  "error - repository Create fails due to error of type AppError",
-			input: validCreateInput(),
+			input: validInput(),
 			setupMocks: func(repo *repomocks.MockUserRepository, input models.User) {
 				repo.EXPECT().
 					FindByEmail(mock.Anything, input.Email).
@@ -207,7 +194,7 @@ func Test_userService_CreateUser(t *testing.T) {
 		{
 			// repo.Create fails after the email check passes due to unknown error type.
 			name:  "error - repository Create fails due to error of unknown type",
-			input: validCreateInput(),
+			input: validInput(),
 			setupMocks: func(repo *repomocks.MockUserRepository, input models.User) {
 				repo.EXPECT().
 					FindByEmail(mock.Anything, input.Email).
@@ -249,6 +236,11 @@ func Test_userService_CreateUser(t *testing.T) {
 							"expected error to be enriched with log attributes",
 						)
 					}
+				} else {
+					assert.Empty(t, tt.wantErrCode,
+						"test case defined a wantErrCode (%s), but received raw error: %v",
+						tt.wantErrCode, err,
+					)
 				}
 				assert.Nil(t, got)
 				return
@@ -284,8 +276,8 @@ func Test_userService_GetAllUsers(t *testing.T) {
 		wantErrCode apperror.ErrorCode
 		wantUsers   []*models.User
 	}{
-		// Success
 		{
+			// Success
 			name: "success - repository GetAll returns the data",
 			setupMocks: func(repo *repomocks.MockUserRepository) {
 				repo.EXPECT().
@@ -658,9 +650,9 @@ func TestUserService_FindUserByEmailInternal(t *testing.T) {
 		name        string
 		email       string
 		setupMocks  func(repo *repomocks.MockUserRepository, email string)
-		wantUser    *models.User
 		wantErr     bool
 		wantErrCode apperror.ErrorCode
+		wantUser    *models.User
 	}{
 		{
 			// Success - repo.FindByEmail returns the data

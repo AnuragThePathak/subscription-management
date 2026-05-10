@@ -9,6 +9,7 @@ import (
 	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 // JWTService handles JWT token operations.
@@ -69,6 +70,7 @@ func (s *jwtService) generateToken(
 		Email:  email,
 		Type:   tokenType,
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        uuid.New().String(),
 			ExpiresAt: jwt.NewNumericDate(expiry),
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now),
@@ -89,8 +91,9 @@ func (s *jwtService) generateToken(
 
 // GenerateTokens creates both access and refresh tokens for a user.
 func (s *jwtService) GenerateTokens(userID, email string) (*models.TokenResponse, error) {
+	now := s.getTime()
 	// Generate access token.
-	accessExpiry := s.getTime().Add(time.Hour * time.Duration(s.config.AccessExpiryHours))
+	accessExpiry := now.Add(time.Hour * time.Duration(s.config.AccessExpiryHours))
 	accessToken, err := s.generateToken(
 		userID,
 		email,
@@ -102,7 +105,7 @@ func (s *jwtService) GenerateTokens(userID, email string) (*models.TokenResponse
 	}
 
 	// Generate refresh token.
-	refreshExpiry := s.getTime().Add(time.Hour * time.Duration(s.config.RefreshExpiryHours))
+	refreshExpiry := now.Add(time.Hour * time.Duration(s.config.RefreshExpiryHours))
 	refreshToken, err := s.generateToken(
 		userID,
 		email,
@@ -131,6 +134,7 @@ func (s *jwtService) ValidateToken(tokenString string, tokenType models.TokenTyp
 		},
 		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Name}),
 		jwt.WithIssuer(s.config.Issuer),
+		jwt.WithTimeFunc(s.getTime),
 	)
 	if err != nil {
 		return nil, err

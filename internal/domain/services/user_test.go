@@ -13,6 +13,7 @@ import (
 	svcmocks "github.com/anuragthepathak/subscription-management/internal/domain/services/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
@@ -225,7 +226,7 @@ func Test_userService_CreateUser(t *testing.T) {
 			got, err := svc.CreateUser(t.Context(), tt.input)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 					assert.Equal(t, tt.wantErrCode, appErr.Code(),
 						"unexpected error code: got %s, want %s",
@@ -246,8 +247,8 @@ func Test_userService_CreateUser(t *testing.T) {
 				return
 			}
 
-			assert.NoError(t, err)
-			assert.NotNil(t, got)
+			require.NoError(t, err)
+			require.NotNil(t, got)
 			if tt.assertResult != nil {
 				tt.assertResult(t, inputSnapshot, got)
 			}
@@ -312,7 +313,7 @@ func Test_userService_GetAllUsers(t *testing.T) {
 			got, err := svc.GetAllUsers(t.Context())
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 					assert.Equal(t, tt.wantErrCode, appErr.Code(),
 						"unexpected error code: got %s, want %s",
@@ -329,7 +330,7 @@ func Test_userService_GetAllUsers(t *testing.T) {
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.wantUsers, got)
 		})
 	}
@@ -409,7 +410,7 @@ func Test_userService_GetUserByID(t *testing.T) {
 			got, err := svc.GetUserByID(t.Context(), tt.id, tt.claimedUserID)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 					assert.Equal(t, tt.wantErrCode, appErr.Code(),
 						"unexpected error code: got %s, want %s", appErr.Code(), tt.wantErrCode)
@@ -423,7 +424,7 @@ func Test_userService_GetUserByID(t *testing.T) {
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.wantUser, got)
 		})
 	}
@@ -549,7 +550,7 @@ func Test_userService_DeleteUser(t *testing.T) {
 			err := svc.DeleteUser(t.Context(), tt.id, tt.claimedUserID)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 					assert.Equal(t, tt.wantErrCode, appErr.Code(),
 						"unexpected error code: got %s, want %s",
@@ -565,7 +566,7 @@ func Test_userService_DeleteUser(t *testing.T) {
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		})
 	}
 }
@@ -621,7 +622,7 @@ func TestUserService_FetchUserByIDInternal(t *testing.T) {
 			got, err := svc.FetchUserByIDInternal(t.Context(), tt.id)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 					assert.Equal(t, tt.wantErrCode, appErr.Code(),
 						"unexpected error code: got %s, want %s", appErr.Code(), tt.wantErrCode)
@@ -635,7 +636,7 @@ func TestUserService_FetchUserByIDInternal(t *testing.T) {
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.wantUser, got)
 		})
 	}
@@ -691,7 +692,7 @@ func TestUserService_FindUserByEmailInternal(t *testing.T) {
 			got, err := svc.FetchUserByEmailInternal(t.Context(), tt.email)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 					assert.Equal(t, tt.wantErrCode, appErr.Code(),
 						"unexpected error code: got %s, want %s",
@@ -708,7 +709,7 @@ func TestUserService_FindUserByEmailInternal(t *testing.T) {
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.wantUser, got)
 		})
 	}

@@ -11,6 +11,7 @@ import (
 	svcmocks "github.com/anuragthepathak/subscription-management/internal/domain/services/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -41,7 +42,8 @@ func newAuthService(
 
 func Test_authService_Login(t *testing.T) {
 	plainPassword := "correctpassword"
-	hashBytes, _ := bcrypt.GenerateFromPassword([]byte(plainPassword), bcrypt.MinCost)
+	hashBytes, err := bcrypt.GenerateFromPassword([]byte(plainPassword), bcrypt.MinCost)
+	require.NoError(t, err)
 	hashedPassword := string(hashBytes)
 
 	validInput := func() models.LoginRequest {
@@ -183,7 +185,7 @@ func Test_authService_Login(t *testing.T) {
 			got, err := svc.Login(t.Context(), tt.input)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 					assert.Equal(t, tt.wantErrCode, appErr.Code(),
 						"unexpected error code: got %s, want %s",
@@ -204,7 +206,7 @@ func Test_authService_Login(t *testing.T) {
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.wantResp, got)
 		})
 	}
@@ -389,7 +391,7 @@ func Test_authService_RefreshToken(t *testing.T) {
 			got, err := svc.RefreshToken(t.Context(), tt.refreshToken)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 					assert.Equal(t, tt.wantErrCode, appErr.Code(),
 						"unexpected error code: got %s, want %s",
@@ -410,7 +412,7 @@ func Test_authService_RefreshToken(t *testing.T) {
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.wantResp, got)
 		})
 	}

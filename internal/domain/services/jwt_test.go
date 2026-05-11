@@ -9,6 +9,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // jwtCfg is the shared JWT configuration used across all JWT tests.
@@ -31,18 +32,18 @@ func newJWTService() services.JWTService {
 // ---------------------------------------------------------------------------
 
 func Test_jwtService_GenerateTokens(t *testing.T) {
+	expectedExpiry := mockTime.Add(time.Hour * time.Duration(jwtCfg.AccessExpiryHours))
+
 	svc := newJWTService()
 	got, err := svc.GenerateTokens(defaultUserHex, defaultUserEmail)
 
 	// Assert the response
-	assert.NoError(t, err)
-	assert.NotNil(t, got)
+	require.NoError(t, err)
+	require.NotNil(t, got)
 	assert.NotEmpty(t, got.AccessToken)
 	assert.NotEmpty(t, got.RefreshToken)
 	assert.NotEqual(t, got.AccessToken, got.RefreshToken,
 		"access and refresh tokens must be distinct")
-
-	expectedExpiry := mockTime.Add(time.Hour * time.Duration(jwtCfg.AccessExpiryHours))
 	assert.Equal(t, expectedExpiry, got.ExpiresAt)
 
 	// Independent Mathematical Verification (The True Unit Test)
@@ -59,12 +60,12 @@ func Test_jwtService_GenerateTokens(t *testing.T) {
 		// Sync the parser time with our mock time
 		jwt.WithTimeFunc(func() time.Time { return mockTime }),
 	)
-	assert.NoError(t, err)
-	assert.True(t, parsedToken.Valid)
+	require.NoError(t, err)
+	require.True(t, parsedToken.Valid, "expected generated token to be mathematically valid")
 
 	// Verify the Claims
 	claims, ok := parsedToken.Claims.(jwt.MapClaims)
-	assert.True(t, ok)
+	require.True(t, ok)
 	assert.Equal(t, defaultUserHex, claims["userId"])
 	assert.Equal(t, defaultUserEmail, claims["email"])
 	assert.Equal(t, string(models.AccessToken), claims["type"])
@@ -208,13 +209,13 @@ func Test_jwtService_ValidateToken(t *testing.T) {
 			got, err := svc.ValidateToken(tt.inputToken, tt.tokenType)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Nil(t, got)
 				return
 			}
 
-			assert.NoError(t, err)
-			assert.NotNil(t, got)
+			require.NoError(t, err)
+			require.NotNil(t, got)
 			assert.Equal(t, defaultUserHex, got.UserID)
 			assert.Equal(t, defaultUserEmail, got.Email)
 			assert.Equal(t, tt.tokenType, got.Type)

@@ -13,6 +13,7 @@ import (
 	svcmocks "github.com/anuragthepathak/subscription-management/internal/domain/services/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
@@ -31,10 +32,9 @@ var mockToday = time.Date(
 	0,
 	mockTime.Location(),
 )
-
-// mockTimeOneMonthLater is a time one month after mockToday.
-var mockTimeOneMonthLater = mockToday.AddDate(0, 1, 0)
-var mockTimeTwoMonthsLater = mockToday.AddDate(0, 2, 0)
+// mockOneMonthLater is a time one month after mockToday.
+var mockOneMonthLater = mockToday.AddDate(0, 1, 0)
+var mockTwoMonthsLater = mockToday.AddDate(0, 2, 0)
 
 // defaultSubID is a stable, deterministic ObjectID used across all tests.
 var defaultSubID = bson.NewObjectID()
@@ -50,7 +50,7 @@ func validSub() *models.Subscription {
 		Frequency: models.Monthly,
 		Category:  models.Entertainment,
 		Status:    models.Active,
-		ValidTill: mockTimeOneMonthLater,
+		ValidTill: mockOneMonthLater,
 		UserID:    defaultUserID,
 		CreatedAt: mockTime,
 		UpdatedAt: mockTime,
@@ -91,7 +91,7 @@ func validBill() *models.Bill {
 		Currency:       models.USD,
 		SubscriptionID: defaultSubID,
 		StartDate:      mockToday,
-		EndDate:        mockTimeOneMonthLater,
+		EndDate:        mockOneMonthLater,
 		Status:         models.Paid,
 		CreatedAt:      mockTime,
 		UpdatedAt:      mockTime,
@@ -141,7 +141,7 @@ func Test_subscriptionService_CreateSubscription(t *testing.T) {
 				s.Frequency == input.Frequency &&
 				s.Category == input.Category &&
 				s.Status == models.Active &&
-				s.ValidTill.Equal(mockTimeOneMonthLater) &&
+				s.ValidTill.Equal(mockOneMonthLater) &&
 				s.UserID == userID &&
 				s.CreatedAt.Equal(mockTime) &&
 				s.UpdatedAt.Equal(mockTime)
@@ -156,7 +156,7 @@ func Test_subscriptionService_CreateSubscription(t *testing.T) {
 			isStaticValid := b.Amount == input.Price &&
 				b.Currency == input.Currency &&
 				b.StartDate.Equal(mockToday) &&
-				b.EndDate.Equal(mockTimeOneMonthLater) &&
+				b.EndDate.Equal(mockOneMonthLater) &&
 				b.Status == models.Paid &&
 				b.CreatedAt.Equal(mockTime) &&
 				b.UpdatedAt.Equal(mockTime)
@@ -230,7 +230,7 @@ func Test_subscriptionService_CreateSubscription(t *testing.T) {
 				assert.Equal(t, input.Frequency, got.Frequency)
 				assert.Equal(t, input.Category, got.Category)
 				assert.Equal(t, models.Active, got.Status)
-				assert.Equal(t, mockTimeOneMonthLater, got.ValidTill)
+				assert.Equal(t, mockOneMonthLater, got.ValidTill)
 				assert.Equal(t, userID, got.UserID)
 				assert.Equal(t, mockTime, got.CreatedAt)
 				assert.Equal(t, mockTime, got.UpdatedAt)
@@ -337,7 +337,7 @@ func Test_subscriptionService_CreateSubscription(t *testing.T) {
 			)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 					assert.Equal(t, tt.wantErrCode, appErr.Code(),
 						"unexpected error code: got %s, want %s",
@@ -352,8 +352,8 @@ func Test_subscriptionService_CreateSubscription(t *testing.T) {
 				return
 			}
 
-			assert.NoError(t, err)
-			assert.NotNil(t, got)
+			require.NoError(t, err)
+			require.NotNil(t, got)
 			if tt.assertResult != nil {
 				tt.assertResult(t, inputSnapshot, got, tt.parsedUserID)
 			}
@@ -410,7 +410,7 @@ func Test_subscriptionService_GetAllSubscriptions(t *testing.T) {
 			got, err := svc.GetAllSubscriptions(t.Context())
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 					assert.Equal(t, tt.wantErrCode, appErr.Code(),
 						"unexpected error code: got %s, want %s",
@@ -427,7 +427,7 @@ func Test_subscriptionService_GetAllSubscriptions(t *testing.T) {
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.wantSubs, got)
 		})
 	}
@@ -530,7 +530,7 @@ func Test_subscriptionService_GetSubscriptionByID(t *testing.T) {
 			)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 					assert.Equal(t, tt.wantErrCode, appErr.Code(),
 						"unexpected error code: got %s, want %s", appErr.Code(), tt.wantErrCode)
@@ -544,7 +544,7 @@ func Test_subscriptionService_GetSubscriptionByID(t *testing.T) {
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.wantSub, got)
 		})
 	}
@@ -625,7 +625,7 @@ func Test_subscriptionService_GetSubscriptionsByUserID(t *testing.T) {
 			got, err := svc.GetSubscriptionsByUserID(t.Context(), tt.id, tt.claimedUserID)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 					assert.Equal(t, tt.wantErrCode, appErr.Code(),
 						"unexpected error code: got %s, want %s",
@@ -641,7 +641,7 @@ func Test_subscriptionService_GetSubscriptionsByUserID(t *testing.T) {
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.wantSubs, got)
 		})
 	}
@@ -793,7 +793,7 @@ func Test_subscriptionService_DeleteSubscription(t *testing.T) {
 			err := svc.DeleteSubscription(t.Context(), tt.subID, tt.claimedUserID)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 					assert.Equal(t, tt.wantErrCode, appErr.Code(),
 						"unexpected error code: got %s, want %s",
@@ -809,7 +809,7 @@ func Test_subscriptionService_DeleteSubscription(t *testing.T) {
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		})
 	}
 }
@@ -821,8 +821,8 @@ func Test_subscriptionService_DeleteSubscription(t *testing.T) {
 func Test_subscriptionService_CancelSubscription(t *testing.T) {
 	validFutureBill := func() *models.Bill {
 		b := validBill()
-		b.StartDate = mockTimeOneMonthLater
-		b.EndDate = mockTimeTwoMonthsLater
+		b.StartDate = mockOneMonthLater
+		b.EndDate = mockTwoMonthsLater
 		return b
 	}
 	buildMatcher := func(updatedSub models.Subscription) any {
@@ -906,8 +906,8 @@ func Test_subscriptionService_CancelSubscription(t *testing.T) {
 				billMatcher := mock.MatchedBy(func(b *models.Bill) bool {
 					return b.Status == models.Refunded &&
 						b.SubscriptionID == subID &&
-						b.StartDate.Equal(mockTimeOneMonthLater) &&
-						b.EndDate.Equal(mockTimeTwoMonthsLater) &&
+						b.StartDate.Equal(mockOneMonthLater) &&
+						b.EndDate.Equal(mockTwoMonthsLater) &&
 						b.UpdatedAt.Equal(mockTime)
 				})
 				billRepo.EXPECT().
@@ -1157,7 +1157,7 @@ func Test_subscriptionService_CancelSubscription(t *testing.T) {
 			got, err := svc.CancelSubscription(t.Context(), tt.subID, tt.claimedUserID)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 					assert.Equal(t, tt.wantErrCode, appErr.Code(),
 						"unexpected error code: got %s, want %s",
@@ -1174,8 +1174,8 @@ func Test_subscriptionService_CancelSubscription(t *testing.T) {
 				return
 			}
 
-			assert.NoError(t, err)
-			assert.NotNil(t, got)
+			require.NoError(t, err)
+			require.NotNil(t, got)
 			assert.Equal(t, tt.wantSub, got)
 		})
 	}
@@ -1190,7 +1190,7 @@ func Test_subscriptionService_RenewSubscriptionInternal(t *testing.T) {
 	// ValidTill advances by one more month (two months from today).
 	renewedSub := func() *models.Subscription {
 		s := validSub()
-		s.ValidTill = mockTimeTwoMonthsLater
+		s.ValidTill = mockTwoMonthsLater
 		return s
 	}
 
@@ -1202,7 +1202,7 @@ func Test_subscriptionService_RenewSubscriptionInternal(t *testing.T) {
 				b.Status == models.Paid
 
 			dynamicValid := b.ID != bson.NilObjectID &&
-				b.StartDate.Equal(mockTimeOneMonthLater) &&
+				b.StartDate.Equal(mockOneMonthLater) &&
 				b.EndDate.Equal(updatedSub.ValidTill) &&
 				b.CreatedAt.Equal(mockTime) &&
 				b.UpdatedAt.Equal(mockTime)
@@ -1379,8 +1379,8 @@ func Test_subscriptionService_RenewSubscriptionInternal(t *testing.T) {
 				_ models.Subscription,
 			) {
 				futureBill := validBill()
-				futureBill.StartDate = mockTimeOneMonthLater
-				futureBill.EndDate = mockTimeTwoMonthsLater
+				futureBill.StartDate = mockOneMonthLater
+				futureBill.EndDate = mockTwoMonthsLater
 
 				subRepo.EXPECT().
 					GetByID(mock.Anything, subID).
@@ -1474,7 +1474,7 @@ func Test_subscriptionService_RenewSubscriptionInternal(t *testing.T) {
 			got, err := svc.RenewSubscriptionInternal(t.Context(), tt.subID)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 					assert.Equal(t, tt.wantErrCode, appErr.Code(),
 						"unexpected error code: got %s, want %s",
@@ -1490,7 +1490,7 @@ func Test_subscriptionService_RenewSubscriptionInternal(t *testing.T) {
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.wantSub, got)
 		})
 	}
@@ -1546,7 +1546,7 @@ func Test_subscriptionService_FetchUpcomingRenewalsInternal(t *testing.T) {
 			got, err := svc.FetchUpcomingRenewalsInternal(t.Context(), daysAhead)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 					assert.Equal(t, tt.wantErrCode, appErr.Code(),
 						"unexpected error code: got %s, want %s",
@@ -1562,7 +1562,7 @@ func Test_subscriptionService_FetchUpcomingRenewalsInternal(t *testing.T) {
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.wantSubs, got)
 		})
 	}
@@ -1625,7 +1625,7 @@ func Test_subscriptionService_HasActiveSubscriptionsInternal(t *testing.T) {
 			got, err := svc.HasActiveSubscriptionsInternal(t.Context(), tt.userID)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 					assert.Equal(t, tt.wantErrCode, appErr.Code(),
 						"unexpected error code: got %s, want %s",
@@ -1640,7 +1640,7 @@ func Test_subscriptionService_HasActiveSubscriptionsInternal(t *testing.T) {
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.wantActive, got)
 		})
 	}
@@ -1697,7 +1697,7 @@ func Test_subscriptionService_FetchSubscriptionByIDInternal(t *testing.T) {
 			got, err := svc.FetchSubscriptionByIDInternal(t.Context(), tt.subID)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 					assert.Equal(t, tt.wantErrCode, appErr.Code(),
 						"unexpected error code: got %s, want %s", appErr.Code(), tt.wantErrCode)
@@ -1711,7 +1711,7 @@ func Test_subscriptionService_FetchSubscriptionByIDInternal(t *testing.T) {
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.wantSub, got)
 		})
 	}
@@ -1738,7 +1738,7 @@ func Test_subscriptionService_FetchSubscriptionsDueForRenewalInternal(t *testing
 			// Success - repo returns subscriptions due for renewal.
 			name:      "success - repository returns subscriptions due for renewal",
 			startTime: mockToday,
-			endTime:   mockTimeOneMonthLater,
+			endTime:   mockOneMonthLater,
 			setupMocks: func(
 				subRepo *repomocks.MockSubscriptionRepository,
 				startTime, endTime time.Time,
@@ -1754,7 +1754,7 @@ func Test_subscriptionService_FetchSubscriptionsDueForRenewalInternal(t *testing
 			// Repo returns a DB error.
 			name:      "error - repository returns db error",
 			startTime: mockToday,
-			endTime:   mockTimeOneMonthLater,
+			endTime:   mockOneMonthLater,
 			setupMocks: func(
 				subRepo *repomocks.MockSubscriptionRepository,
 				startTime, endTime time.Time,
@@ -1780,7 +1780,7 @@ func Test_subscriptionService_FetchSubscriptionsDueForRenewalInternal(t *testing
 			got, err := svc.FetchSubscriptionsDueForRenewalInternal(t.Context(), tt.startTime, tt.endTime)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 					assert.Equal(t, tt.wantErrCode, appErr.Code(),
 						"unexpected error code: got %s, want %s",
@@ -1796,7 +1796,7 @@ func Test_subscriptionService_FetchSubscriptionsDueForRenewalInternal(t *testing
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.wantSubs, got)
 		})
 	}
@@ -1850,7 +1850,7 @@ func Test_subscriptionService_FetchCanceledExpiredSubscriptionsInternal(t *testi
 			got, err := svc.FetchCanceledExpiredSubscriptionsInternal(t.Context())
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 					assert.Equal(t, tt.wantErrCode, appErr.Code(),
 						"unexpected error code: got %s, want %s",
@@ -1866,7 +1866,7 @@ func Test_subscriptionService_FetchCanceledExpiredSubscriptionsInternal(t *testi
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.wantSubs, got)
 		})
 	}
@@ -1899,7 +1899,7 @@ func Test_subscriptionService_MarkCanceledSubscriptionAsExpiredInternal(t *testi
 						s.Status == models.Expired &&
 						s.UpdatedAt.Equal(mockTime)
 
-					staticValid := s.ValidTill.Equal(mockTimeOneMonthLater) &&
+					staticValid := s.ValidTill.Equal(mockOneMonthLater) &&
 						s.UserID == defaultUserID
 					return changeValid && staticValid
 				})
@@ -1967,7 +1967,7 @@ func Test_subscriptionService_MarkCanceledSubscriptionAsExpiredInternal(t *testi
 			err := svc.MarkCanceledSubscriptionAsExpiredInternal(t.Context(), tt.subID)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if appErr, ok := errors.AsType[apperror.AppError](err); ok {
 					assert.Equal(t, tt.wantErrCode, appErr.Code(),
 						"unexpected error code: got %s, want %s",
@@ -1982,7 +1982,7 @@ func Test_subscriptionService_MarkCanceledSubscriptionAsExpiredInternal(t *testi
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		})
 	}
 }

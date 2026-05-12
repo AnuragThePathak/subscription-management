@@ -246,7 +246,7 @@ func (w *QueueWorker) handleSubscriptionRenewal(ctx context.Context, task *asynq
 
 	// Check if the renewal date is within our window (now to next 4 hours)
 	now := w.getTime()
-	renewalWindow := now.Add(time.Hour * RenewalHoursBeforeDay)
+	renewalWindow := now.Add(RenewalHoursBeforeDay * time.Hour)
 	if subscription.ValidTill.After(renewalWindow) {
 		slog.DebugContext(ctx, "Skipping renewal: outside valid window",
 			logattr.ValidTill(subscription.ValidTill),

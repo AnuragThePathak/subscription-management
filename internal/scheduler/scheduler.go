@@ -33,7 +33,7 @@ const (
 	ExpirationTask = "subscription:expiration"
 	// RenewalHoursBeforeDay is how many hours before the renewal date to process
 	// renewals
-	RenewalHoursBeforeDay = 8
+	RenewalHoursBeforeDay = 4
 )
 
 // ReminderPayload represents the data needed to process a reminder.
@@ -419,8 +419,8 @@ func (s *SubscriptionScheduler) handleRenewalTasks(ctx context.Context) error {
 func (s *SubscriptionScheduler) getSubscriptionsDueForRenewal(ctx context.Context) ([]*models.Subscription, error) {
 	// Calculate time range: now to RenewalHoursBeforeDay hours ahead
 	now := s.getTime()
-	renewalWindowStart := now.Add(time.Hour)
-	renewalWindowEnd := now.Add(time.Hour * RenewalHoursBeforeDay)
+	renewalWindowStart := now.Add(-RenewalHoursBeforeDay * time.Hour)
+	renewalWindowEnd := now.Add(RenewalHoursBeforeDay * time.Hour)
 
 	return s.subscriptionService.FetchSubscriptionsDueForRenewalInternal(ctx, renewalWindowStart, renewalWindowEnd)
 }

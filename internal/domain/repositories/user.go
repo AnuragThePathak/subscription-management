@@ -52,14 +52,12 @@ func NewUserRepository(ctx context.Context, db *mongo.Database) (UserRepository,
 // Create adds a new user to the database from a signup request
 func (uc *userRepository) Create(ctx context.Context, user *models.User) (*models.User, error) {
 	// Insert into database
-	if _, err := uc.collection.InsertOne(ctx, user); err != nil {
-		if mongo.IsDuplicateKeyError(err) {
+	if err := lib.Create(ctx, uc.collection, user); err != nil {
+		if appErr, ok := errors.AsType[apperror.AppError](err); ok &&
+			appErr.Code() == apperror.ErrConflict {
 			return nil, apperror.NewConflictError("Email already exists")
 		}
-		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, apperror.NewTimeoutError(err)
-		}
-		return nil, apperror.NewDBError(err)
+		return nil, err
 	}
 
 	return user, nil
@@ -81,37 +79,17 @@ func (uc *userRepository) GetAll(ctx context.Context) ([]*models.User, error) {
 
 func (uc *userRepository) Update(ctx context.Context, user *models.User) (*models.User, error) {
 	filter := bson.M{"_id": user.ID}
-
-	result, err := uc.collection.ReplaceOne(ctx, filter, user)
-	if err != nil {
-		if mongo.IsDuplicateKeyError(err) {
+	if err := lib.Update(ctx, uc.collection, filter, user); err != nil {
+		if appErr, ok := errors.AsType[apperror.AppError](err); ok &&
+			appErr.Code() == apperror.ErrConflict {
 			return nil, apperror.NewConflictError("Email already exists")
 		}
-		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, apperror.NewTimeoutError(err)
-		}
-		return nil, apperror.NewDBError(err)
-	}
-
-	if result.MatchedCount == 0 {
-		return nil, apperror.NewNotFoundError("User not found")
+		return nil, err
 	}
 
 	return user, nil
 }
 
 func (uc *userRepository) Delete(ctx context.Context, id bson.ObjectID) error {
-	result, err := uc.collection.DeleteOne(ctx, bson.M{"_id": id})
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return apperror.NewTimeoutError(err)
-		}
-		return apperror.NewDBError(err)
-	}
-
-	if result.DeletedCount == 0 {
-		return apperror.NewNotFoundError("User not found")
-	}
-
-	return nil
+	return lib.Delete(ctx, uc.collection, bson.M{"_id": id})
 }

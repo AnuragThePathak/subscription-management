@@ -2,12 +2,10 @@ package repositories
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
-	"github.com/anuragthepathak/subscription-management/internal/api/shared/apperror"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/anuragthepathak/subscription-management/internal/lib"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -51,15 +49,8 @@ func NewBillRepository(ctx context.Context, db *mongo.Database) (BillRepository,
 
 func (r *billRepository) Create(ctx context.Context, bill *models.Bill) (*models.Bill, error) {
 	// Insert the bill into the collection
-	_, err := r.collection.InsertOne(ctx, bill)
-	if err != nil {
-		if mongo.IsDuplicateKeyError(err) {
-			return nil, apperror.NewConflictError("bill already exists")
-		}
-		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, apperror.NewTimeoutError(err)
-		}
-		return nil, apperror.NewDBError(err)
+	if err := lib.Create(ctx, r.collection, bill); err != nil {
+		return nil, err
 	}
 
 	return bill, nil
@@ -82,15 +73,8 @@ func (r *billRepository) GetRecentBill(ctx context.Context, subscriptionID bson.
 func (r *billRepository) Update(ctx context.Context, bill *models.Bill) (*models.Bill, error) {
 	// Update the bill in the collection
 	filter := bson.M{"_id": bill.ID}
-	res, err := r.collection.ReplaceOne(ctx, filter, bill)
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, apperror.NewTimeoutError(err)
-		}
-		return nil, apperror.NewDBError(err)
-	}
-	if res.MatchedCount == 0 {
-		return nil, apperror.NewNotFoundError("bill not found")
+	if err := lib.Update(ctx, r.collection, filter, bill); err != nil {
+		return nil, err
 	}
 
 	return bill, nil

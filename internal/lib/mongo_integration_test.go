@@ -84,6 +84,49 @@ func newDummyDoc(name string) *dummyDoc {
 	}
 }
 
+func TestCreate(t *testing.T) {
+	// Happy path
+	t.Run("successfully inserts a document", func(t *testing.T) {
+		collection := newTestCollection(t)
+		doc := newDummyDoc("Test Create")
+
+		err := lib.Create(t.Context(), collection, doc)
+		require.NoError(t, err)
+
+		// Verify it actually hit the database
+		count, err := collection.CountDocuments(t.Context(), bson.M{"_id": doc.ID})
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), count)
+	})
+
+	// Conflict
+	t.Run("translates duplicate key to apperror.ErrConflict", func(t *testing.T) {
+		collection := newTestCollection(t)
+		doc := newDummyDoc("Test Conflict")
+		// First insert succeeds
+		err := lib.Create(t.Context(), collection, doc)
+		require.NoError(t, err)
+
+		// Second insert with exact same _id triggers duplicate key
+		err = lib.Create(t.Context(), collection, doc)
+
+		require.Error(t, err)
+		assertAppErrorCode(t, err, apperror.ErrConflict)
+	})
+
+	// Timeout
+	t.Run("translates context.DeadlineExceeded to apperror", func(t *testing.T) {
+		collection := newTestCollection(t)
+		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-1*time.Second))
+		defer cancel()
+
+		err := lib.Create(ctx, collection, newDummyDoc("Timeout Doc"))
+
+		require.Error(t, err)
+		assertAppErrorCode(t, err, apperror.ErrTimeout)
+	})
+}
+
 func TestFindOne(t *testing.T) {
 	// Happy path
 	t.Run("successfully finds a document", func(t *testing.T) {
@@ -100,7 +143,7 @@ func TestFindOne(t *testing.T) {
 	// Multiple matches
 	t.Run("successfully returns first match without erroring on multiple matches", func(t *testing.T) {
 		collection := newTestCollection(t)
-		
+
 		// Insert two targets
 		doc1 := newDummyDoc("Target")
 		doc2 := newDummyDoc("Target")
@@ -109,7 +152,7 @@ func TestFindOne(t *testing.T) {
 
 		// Prove it gracefully grabs one and ignores the other without panicking
 		got, err := lib.FindOne[dummyDoc](t.Context(), collection, bson.M{"name": "Target"})
-		
+
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		assert.Equal(t, "Target", got.Name)
@@ -131,7 +174,7 @@ func TestFindOne(t *testing.T) {
 	// Deadline exceeded
 	t.Run("translates context.DeadlineExceeded to apperror", func(t *testing.T) {
 		collection := newTestCollection(t)
-		
+
 		// Create a context that is already expired
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-1*time.Second))
 		defer cancel()
@@ -155,9 +198,9 @@ func TestFindMany(t *testing.T) {
 		expectedDocs := []*dummyDoc{doc1, doc2}
 		_, err := collection.InsertMany(t.Context(), []any{doc1, doc2, noise})
 		require.NoError(t, err)
-		
+
 		got, err := lib.FindMany[dummyDoc](t.Context(), collection, bson.M{"name": "Target"})
-		
+
 		require.NoError(t, err)
 		require.Len(t, got, 2, "expected exactly 2 documents, cursor iteration or filter failed")
 		assert.ElementsMatch(t, expectedDocs, got, "expected docs didn't match")
@@ -228,5 +271,119 @@ func TestCount(t *testing.T) {
 		require.Error(t, err)
 		assertAppErrorCode(t, err, apperror.ErrTimeout)
 		assert.Equal(t, int64(0), count)
+	})
+}
+
+func TestUpdate(t *testing.T) {
+	// Happy path
+	t.Run("successfully updates a document", func(t *testing.T) {
+		collection := newTestCollection(t)
+		doc := newDummyDoc("Original Name")
+		noise := newDummyDoc("Noise")
+		// Seed the document directly via driver to bypass the wrapper for setup
+		_, err := collection.InsertMany(t.Context(), []any{doc, noise})
+		require.NoError(t, err)
+
+		// Modify the document
+		doc.Name = "Updated Name"
+		err = lib.Update(t.Context(), collection, bson.M{"_id": doc.ID}, doc)
+		require.NoError(t, err)
+
+		// Verify changes
+		got := &dummyDoc{}
+		err = collection.FindOne(t.Context(), bson.M{"_id": doc.ID}).Decode(got)
+		require.NoError(t, err)
+		assert.Equal(t, doc, got)
+	})
+
+	// Not Found
+	t.Run("translates matched count 0 to apperror.ErrNotFound", func(t *testing.T) {
+		collection := newTestCollection(t)
+		doc := newDummyDoc("Ghost Doc")
+
+		err := lib.Update(
+			t.Context(),
+			collection,
+			bson.M{"_id": doc.ID},
+			doc,
+		)
+
+		require.Error(t, err)
+		assertAppErrorCode(t, err, apperror.ErrNotFound)
+	})
+
+	// Conflict (Requires a unique index setup)
+	t.Run("translates duplicate key during update to apperror.ErrConflict", func(t *testing.T) {
+		collection := newTestCollection(t)
+
+		// Create a unique index on "name" to simulate an Email/Username collision
+		_, err := collection.Indexes().CreateOne(t.Context(), mongo.IndexModel{
+			Keys:    bson.D{{Key: "name", Value: 1}},
+			Options: options.Index().SetUnique(true),
+		})
+		require.NoError(t, err)
+		doc1 := newDummyDoc("Unique Target 1")
+		doc2 := newDummyDoc("Unique Target 2")
+		_, err = collection.InsertMany(t.Context(), []any{doc1, doc2})
+		require.NoError(t, err)
+
+		// Attempt to update doc2 to have doc1's unique name
+		doc2.Name = "Unique Target 1"
+		err = lib.Update(t.Context(), collection, bson.M{"_id": doc2.ID}, doc2)
+
+		require.Error(t, err)
+		assertAppErrorCode(t, err, apperror.ErrConflict)
+	})
+
+	// Timeout
+	t.Run("translates context.DeadlineExceeded to apperror", func(t *testing.T) {
+		collection := newTestCollection(t)
+		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-1*time.Second))
+		defer cancel()
+
+		err := lib.Update(ctx, collection, bson.M{}, newDummyDoc("Timeout Doc"))
+
+		require.Error(t, err)
+		assertAppErrorCode(t, err, apperror.ErrTimeout)
+	})
+}
+
+func TestDelete(t *testing.T) {
+	// Happy path
+	t.Run("successfully deletes a document", func(t *testing.T) {
+		collection := newTestCollection(t)
+		doc := newDummyDoc("Target to Delete")
+		noise := newDummyDoc("Noise")
+		_, err := collection.InsertMany(t.Context(), []any{doc, noise})
+		require.NoError(t, err)
+
+		err = lib.Delete(t.Context(), collection, bson.M{"_id": doc.ID})
+		require.NoError(t, err)
+
+		// Verify it is gone
+		count, _ := collection.CountDocuments(t.Context(), bson.M{"_id": doc.ID})
+		assert.Equal(t, int64(0), count)
+	})
+
+	// Not Found
+	t.Run("translates deleted count 0 to apperror.ErrNotFound", func(t *testing.T) {
+		collection := newTestCollection(t)
+
+		err := lib.Delete(t.Context(), collection, bson.M{"_id": bson.NewObjectID()})
+
+		require.Error(t, err)
+		assertAppErrorCode(t, err, apperror.ErrNotFound)
+	})
+
+	// Timeout
+	t.Run("translates context.DeadlineExceeded to apperror", func(t *testing.T) {
+		collection := newTestCollection(t)
+		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-1*time.Second))
+		defer cancel()
+
+		err := lib.Delete(ctx, collection, bson.M{})
+
+		require.Error(t, err)
+		assertAppErrorCode(t, err, apperror.ErrTimeout)
 	})
 }

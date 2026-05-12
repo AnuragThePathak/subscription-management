@@ -3,5 +3,7 @@
     "buildFlags": [
       "-tags=integration",
     ]
-  }
+  },
+  "go.testFlags": ["-tags=integration"],
+  "makefile.configureOnOpen": false
 }

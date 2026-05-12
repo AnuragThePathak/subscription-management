@@ -2,12 +2,10 @@ package repositories
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
-	"github.com/anuragthepathak/subscription-management/internal/api/shared/apperror"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/anuragthepathak/subscription-management/internal/lib"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -15,7 +13,6 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-//go:generate mockery
 type SubscriptionRepository interface {
 	Create(context.Context, *models.Subscription) (*models.Subscription, error)
 	GetByID(context.Context, bson.ObjectID) (*models.Subscription, error)
@@ -63,11 +60,8 @@ func NewSubscriptionRepository(ctx context.Context, db *mongo.Database) (Subscri
 }
 
 func (r *subscriptionRepository) Create(ctx context.Context, subscription *models.Subscription) (*models.Subscription, error) {
-	if _, err := r.collection.InsertOne(ctx, subscription); err != nil {
-		if mongo.IsDuplicateKeyError(err) {
-			return nil, apperror.NewConflictError("Subscription already exists")
-		}
-		return nil, apperror.NewDBError(err)
+	if err := lib.Create(ctx, r.collection, subscription); err != nil {
+		return nil, err
 	}
 	return subscription, nil
 }
@@ -160,16 +154,8 @@ func (r *subscriptionRepository) GetCanceledExpiredSubscriptions(ctx context.Con
 
 func (r *subscriptionRepository) Update(ctx context.Context, subscription *models.Subscription) (*models.Subscription, error) {
 	filter := bson.M{"_id": subscription.ID}
-
-	res, err := r.collection.ReplaceOne(ctx, filter, subscription)
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, apperror.NewTimeoutError(err)
-		}
-		return nil, apperror.NewDBError(err)
-	}
-	if res.MatchedCount == 0 {
-		return nil, apperror.NewNotFoundError("Subscription not found")
+	if err := lib.Update(ctx, r.collection, filter, subscription); err != nil {
+		return nil, err
 	}
 
 	return subscription, nil
@@ -177,17 +163,5 @@ func (r *subscriptionRepository) Update(ctx context.Context, subscription *model
 
 func (r *subscriptionRepository) Delete(ctx context.Context, id bson.ObjectID) error {
 	filter := bson.M{"_id": id}
-
-	res, err := r.collection.DeleteOne(ctx, filter)
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return apperror.NewTimeoutError(err)
-		}
-		return apperror.NewDBError(err)
-	}
-	if res.DeletedCount == 0 {
-		return apperror.NewNotFoundError("Subscription not found")
-	}
-
-	return nil
+	return lib.Delete(ctx, r.collection, filter)
 }

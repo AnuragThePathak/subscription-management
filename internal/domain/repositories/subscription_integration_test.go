@@ -20,6 +20,8 @@ import (
 // Helpers
 // ---------------------------------------------------------------------------
 
+var defaultUserID = bson.NewObjectID()
+
 // validSub returns a valid Active subscription
 func validSub() *models.Subscription {
 	return &models.Subscription{
@@ -31,7 +33,7 @@ func validSub() *models.Subscription {
 		Category:  models.Entertainment,
 		Status:    models.Active,
 		ValidTill: mockOneMonthLater,
-		UserID:    bson.NewObjectID(),
+		UserID:    defaultUserID,
 		CreatedAt: mockTime,
 		UpdatedAt: mockTime,
 	}
@@ -120,14 +122,15 @@ func TestSubscriptionRepository_GetByID(t *testing.T) {
 	// Happy path: Fetch the subscription by ID
 	t.Run("success - found by id", func(t *testing.T) {
 		repo, collection := newSubRepo(t)
-		sub := validSub()
-		_, err := collection.InsertOne(t.Context(), sub)
+		target := validSub()
+		decoy := validSub()
+		_, err := collection.InsertMany(t.Context(), []*models.Subscription{decoy, target})
 		require.NoError(t, err)
 
-		got, err := repo.GetByID(t.Context(), sub.ID)
+		got, err := repo.GetByID(t.Context(), target.ID)
 
 		require.NoError(t, err)
-		assert.Equal(t, sub, got)
+		assert.Equal(t, target, got)
 	})
 
 	// Error
@@ -153,9 +156,14 @@ func TestSubscriptionRepository_GetAll(t *testing.T) {
 	// Happy path: Fetch all subscriptions
 	t.Run("returns all inserted subscriptions", func(t *testing.T) {
 		repo, collection := newSubRepo(t)
+		activeSub1 := validSub()
+		activeSub2 := validSub()
+		activeSub2.UserID = bson.NewObjectID()
+		canceledSub := validCanceledSub()
 		subs := []*models.Subscription{
-			validSub(),
-			validSub(),
+			activeSub1,
+			activeSub2,
+			canceledSub,
 		}
 		_, err := collection.InsertMany(t.Context(), subs)
 		require.NoError(t, err)
@@ -189,20 +197,18 @@ func TestSubscriptionRepository_GetByUserID(t *testing.T) {
 	// Successfully retrieved subscriptions for a user
 	t.Run("returns only subscriptions for the given user", func(t *testing.T) {
 		repo, collection := newSubRepo(t)
-		userID := bson.NewObjectID()
 		sub1 := validSub()
-		sub1.UserID = userID
 		sub2 := validSub()
-		sub2.UserID = userID
-		sub3 := validSub()
-		expectedSubs := []*models.Subscription{sub1, sub2}
+		sub2.UserID = bson.NewObjectID()
+		sub3 := validExpiredSub()
+		expectedSubs := []*models.Subscription{sub1, sub3}
 
 		_, err := collection.InsertMany(
-			t.Context(), []*models.Subscription{sub1, sub2, sub3},
+			t.Context(), []*models.Subscription{sub2, sub3, sub1},
 		)
 		require.NoError(t, err)
 
-		got, err := repo.GetByUserID(t.Context(), userID)
+		got, err := repo.GetByUserID(t.Context(), defaultUserID)
 
 		require.NoError(t, err)
 		require.Len(t, got, 2)
@@ -234,12 +240,13 @@ func TestSubscriptionRepository_GetActiveSubscriptions(t *testing.T) {
 		repo, collection := newSubRepo(t)
 		activeSub1 := validSub()
 		activeSub2 := validSub()
+		activeSub2.UserID = bson.NewObjectID()
 		canceledSub := validCanceledSub()
 		expiredSub := validExpiredSub()
 		expectedSubs := []*models.Subscription{activeSub1, activeSub2}
 		_, err := collection.InsertMany(
 			t.Context(),
-			[]*models.Subscription{activeSub1, activeSub2, canceledSub, expiredSub},
+			[]*models.Subscription{activeSub2, canceledSub, expiredSub, activeSub1},
 		)
 		require.NoError(t, err)
 
@@ -302,10 +309,11 @@ func TestSubscriptionRepository_CountActiveSubscriptions(t *testing.T) {
 		repo, collection := newSubRepo(t)
 		activeSub1 := validSub()
 		activeSub2 := validSub()
+		activeSub2.UserID = bson.NewObjectID()
 		canceledSub := validCanceledSub()
 		_, err := collection.InsertMany(
 			t.Context(),
-			[]*models.Subscription{activeSub1, activeSub2, canceledSub},
+			[]*models.Subscription{activeSub2, canceledSub, activeSub1},
 		)
 		require.NoError(t, err)
 
@@ -372,6 +380,7 @@ func TestSubscriptionRepository_GetSubscriptionsDueForReminder(t *testing.T) {
 		// Expires exactly 3 days from now — also in the [3-day] window.
 		sub2 := validSub()
 		sub2.ValidTill = mockToday.AddDate(0, 0, 3)
+		sub2.UserID = bson.NewObjectID()
 		// Expires in 15 days — outside both windows.
 		sub3 := validSub()
 		sub3.ValidTill = mockToday.AddDate(0, 0, 15)
@@ -381,7 +390,7 @@ func TestSubscriptionRepository_GetSubscriptionsDueForReminder(t *testing.T) {
 
 		_, err := collection.InsertMany(
 			t.Context(),
-			[]*models.Subscription{sub1, sub2, sub3, canceledSub, expiredSub},
+			[]*models.Subscription{sub2, sub3, canceledSub, expiredSub, sub1},
 		)
 		require.NoError(t, err)
 
@@ -457,12 +466,13 @@ func TestSubscriptionRepository_GetSubscriptionsDueForRenewal(t *testing.T) {
 		sub1.ValidTill = mockToday
 		sub2 := validSub()
 		sub2.ValidTill = mockTomorrow
+		sub2.UserID = bson.NewObjectID()
 		sub3 := validSub()
 		canceledSub := validCanceledSub()
 		canceledSub.ValidTill = mockTomorrow
 
 		_, err := collection.InsertMany(
-			t.Context(), []any{sub1, sub2, sub3, canceledSub},
+			t.Context(), []*models.Subscription{sub2, sub3, canceledSub, sub1},
 		)
 		require.NoError(t, err)
 
@@ -484,7 +494,7 @@ func TestSubscriptionRepository_GetSubscriptionsDueForRenewal(t *testing.T) {
 		subEnd := validSub()
 		subEnd.ValidTill = mockTomorrow // Exactly at endTime
 
-		_, err := collection.InsertMany(t.Context(), []any{subStart, subEnd})
+		_, err := collection.InsertMany(t.Context(), []*models.Subscription{subStart, subEnd})
 		require.NoError(t, err)
 
 		got, err := repo.GetSubscriptionsDueForRenewal(t.Context(), mockToday, mockTomorrow)
@@ -516,9 +526,14 @@ func TestSubscriptionRepository_GetCanceledExpiredSubscriptions(t *testing.T) {
 	t.Run("returns only canceled subs expired before the cutoff", func(t *testing.T) {
 		repo, collection := newSubRepo(t)
 
-		// Target: Canceled AND Expired
-		targetSub := validCanceledSub()
-		targetSub.ValidTill = mockOneMonthAgo // 1 month ago
+		// Target 1: Canceled AND Expired
+		targetSub1 := validCanceledSub()
+		targetSub1.ValidTill = mockOneMonthAgo // 1 month ago
+
+		// target 2
+		targetSub2 := validCanceledSub()
+		targetSub2.ValidTill = mockToday
+		targetSub2.UserID = bson.NewObjectID()
 
 		// Decoy 1: Canceled but NOT Expired yet
 		decoyFuture := validCanceledSub()
@@ -527,14 +542,19 @@ func TestSubscriptionRepository_GetCanceledExpiredSubscriptions(t *testing.T) {
 		decoyActive := validSub()
 		decoyActive.ValidTill = mockOneMonthAgo // 1 month ago
 
-		_, err := collection.InsertMany(t.Context(), []any{targetSub, decoyFuture, decoyActive})
+		expectSubs := []*models.Subscription{targetSub1, targetSub2}
+
+		_, err := collection.InsertMany(
+			t.Context(),
+			[]*models.Subscription{targetSub2, decoyFuture, decoyActive, targetSub1},
+		)
 		require.NoError(t, err)
 
 		got, err := repo.GetCanceledExpiredSubscriptions(t.Context(), mockTime)
 
 		require.NoError(t, err)
-		require.Len(t, got, 1)
-		assert.Equal(t, targetSub.ID, got[0].ID)
+		require.Len(t, got, 2)
+		assert.Equal(t, expectSubs, got)
 	})
 
 	// Boundary condition
@@ -577,7 +597,7 @@ func TestSubscriptionRepository_Update(t *testing.T) {
 
 		target := validSub()
 		decoy := validSub() // Has same Status, Frequency, etc.
-		_, err := collection.InsertMany(t.Context(), []any{target, decoy})
+		_, err := collection.InsertMany(t.Context(), []*models.Subscription{decoy, target})
 		require.NoError(t, err)
 
 		// Mutate the target
@@ -624,7 +644,7 @@ func TestSubscriptionRepository_Delete(t *testing.T) {
 
 		target := validSub()
 		decoy := validSub()
-		_, err := collection.InsertMany(t.Context(), []any{target, decoy})
+		_, err := collection.InsertMany(t.Context(), []*models.Subscription{decoy, target})
 		require.NoError(t, err)
 
 		err = repo.Delete(t.Context(), target.ID)

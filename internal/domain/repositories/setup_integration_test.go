@@ -39,7 +39,6 @@ var mockYesterday = mockToday.AddDate(0, 0, -1)
 
 // mockOneMonthLater is a time one month after mockToday.
 var mockOneMonthLater = mockToday.AddDate(0, 1, 0)
-var mockTwoMonthsLater = mockToday.AddDate(0, 2, 0)
 var mockOneMonthAgo = mockToday.AddDate(0, -1, 0)
 
 // ---------------------------------------------------------------------------

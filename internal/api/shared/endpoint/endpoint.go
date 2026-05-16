@@ -40,6 +40,7 @@ func (h *RequestHandler) readRequestBody(w http.ResponseWriter, r *http.Request,
 				logattr.Path(r.URL.Path),
 				logattr.LimitBytes(maxBytesErr.Limit),
 			)
+
 			WriteAPIResponse(w, http.StatusRequestEntityTooLarge, map[string]string{
 				"error": "Request body too large",
 			})
@@ -51,6 +52,7 @@ func (h *RequestHandler) readRequestBody(w http.ResponseWriter, r *http.Request,
 			logattr.Path(r.URL.Path),
 			logattr.Error(err),
 		)
+
 		WriteAPIResponse(
 			w,
 			http.StatusBadRequest,
@@ -58,12 +60,14 @@ func (h *RequestHandler) readRequestBody(w http.ResponseWriter, r *http.Request,
 		)
 		return false
 	}
+
 	if err := h.validate.Struct(bodyObj); err != nil {
 		slog.WarnContext(r.Context(), "Request validation failed",
 			logattr.Method(r.Method),
 			logattr.Path(r.URL.Path),
 			logattr.Error(err),
 		)
+
 		WriteAPIResponse(
 			w,
 			http.StatusBadRequest,
@@ -79,6 +83,7 @@ func (h *RequestHandler) ServeRequest(req InternalRequest) {
 	if !h.readRequestBody(req.W, req.R, req.ReqBodyObj) {
 		return
 	}
+	
 	if req.SuccessCode == 0 {
 		slog.WarnContext(req.R.Context(), "SuccessCode not set, defaulting to 200",
 			logattr.Method(req.R.Method),
@@ -118,6 +123,7 @@ func (h *RequestHandler) ServeRequest(req InternalRequest) {
 					logAttrs...,
 				)
 			}
+
 			WriteAPIResponse(
 				req.W,
 				status,
@@ -132,6 +138,7 @@ func (h *RequestHandler) ServeRequest(req InternalRequest) {
 				logattr.Path(req.R.URL.Path),
 				logattr.Error(err),
 			)
+
 			WriteAPIResponse(
 				req.W,
 				http.StatusInternalServerError,

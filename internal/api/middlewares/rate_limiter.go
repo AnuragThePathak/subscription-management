@@ -41,7 +41,8 @@ func RateLimiter(rateLimiterService services.RateLimiterService) func(http.Handl
 			}
 
 			// Check if the request is allowed.
-			remaining, err := rateLimiterService.Allowed(r.Context(), ip)
+			isAllowed, remaining, retryAfter, err :=
+				rateLimiterService.Allowed(r.Context(), ip)
 			if err != nil {
 				span := trace.SpanFromContext(r.Context())
 				span.RecordError(err)
@@ -65,9 +66,10 @@ func RateLimiter(rateLimiterService services.RateLimiterService) func(http.Handl
 			// Set the rate limit headers.
 			w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(remaining))
 
-			if remaining <= 0 {
+			if !isAllowed {
+				retryAfterSeconds := strconv.FormatInt(int64(retryAfter.Seconds()), 10)
 				// Set retry header.
-				w.Header().Set("Retry-After", "60") // Suggest retry after 60 seconds.
+				w.Header().Set("Retry-After", retryAfterSeconds) // Suggest retry after 60 seconds.
 
 				slog.WarnContext(r.Context(), "Rate limit exceeded",
 					logattr.IP(ip),

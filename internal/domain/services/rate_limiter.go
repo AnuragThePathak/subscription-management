@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/anuragthepathak/subscription-management/internal/core/logattr"
 	"github.com/go-redis/redis_rate/v10"
@@ -12,7 +13,7 @@ import (
 // RateLimiterService defines the interface for rate limiting operations.
 type RateLimiterService interface {
 	// Allowed checks if the given IP has not exceeded the rate limit.
-	Allowed(ctx context.Context, ip string) (int, error)
+	Allowed(ctx context.Context, ip string) (bool, int, time.Duration, error)
 }
 
 type redisRateLimiter struct {
@@ -22,7 +23,9 @@ type redisRateLimiter struct {
 }
 
 // NewRateLimiterService creates a new instance of the rate limiter service.
-func NewRateLimiterService(redisClient *redis_rate.Limiter, limit redis_rate.Limit, prefix string) RateLimiterService {
+func NewRateLimiterService(
+	redisClient *redis_rate.Limiter, limit redis_rate.Limit, prefix string,
+) RateLimiterService {
 	slog.Info("Rate limiter service created",
 		logattr.Prefix(prefix),
 		logattr.Rate(limit.Rate),
@@ -38,12 +41,16 @@ func NewRateLimiterService(redisClient *redis_rate.Limiter, limit redis_rate.Lim
 }
 
 // Allowed checks if the given IP has not exceeded the rate limit.
-func (r *redisRateLimiter) Allowed(ctx context.Context, ip string) (int, error) {
+func (r *redisRateLimiter) Allowed(
+	ctx context.Context,
+	ip string,
+) (bool, int, time.Duration, error) {
 	key := fmt.Sprintf("%s:%s", r.prefix, ip)
 	res, err := r.limiter.Allow(ctx, key, r.limit)
 	if err != nil {
-		return 0, fmt.Errorf("error checking rate limit: %w", err)
+		return false, 0, 0, fmt.Errorf("error checking rate limit: %w", err)
 	}
 
-	return res.Remaining, nil
+	isAllowed := res.Allowed == 1
+	return isAllowed, res.Remaining, res.RetryAfter, nil
 }

@@ -4,8 +4,10 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/anuragthepathak/subscription-management/internal/api/middlewares"
 	"github.com/anuragthepathak/subscription-management/internal/domain/services/mocks"
@@ -19,80 +21,90 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestRateLimiter(t *testing.T) {
-	// clientIP is the IP that httptest.NewRequest sets as RemoteAddr (loopback
-	// from Go 1.13+). ClientIP() will see this as a private/loopback address
-	// and fall back to using it as-is.
-	//
-	// httptest.NewRequest sets RemoteAddr = "192.0.2.1:1234" (TEST-NET-1),
-	// which is not private/loopback, so ClientIP returns it directly.
-	// We capture that value and use it in mock expectations.
-	const expectedIP = "192.0.2.1"
-
 	tests := []struct {
-		name           string
-		remoteAddr     string // To simulate the IP address
-		setupMocks     func(svc *mocks.MockRateLimiterService, ip string)
-		wantStatus     int
-		wantNextCall   bool
-		wantRemaining  string
-		wantRetryAfter string
+		name       string
+		remoteAddr string
+
+		// The Shared Truth
+		isAllowed  bool
+		remaining  int
+		retryAfter time.Duration
+
+		// Directives
+		setupMocks func(
+			svc *mocks.MockRateLimiterService,
+			ip string,
+			allowed bool,
+			remaining int,
+			retry time.Duration,
+		)
+		wantStatus    int
+		wantNextCall  bool
+		expectHeaders bool
 	}{
 		{
 			name:       "success - request allowed with remaining quota",
 			remoteAddr: "192.168.1.1:1234",
-			setupMocks: func(svc *mocks.MockRateLimiterService, ip string) {
-				// Assumes lib.ClientIP strips the port and returns "192.168.1.1"
+			isAllowed:  true,
+			remaining:  5,
+			retryAfter: 0,
+			setupMocks: func(svc *mocks.MockRateLimiterService, ip string, allowed bool, rem int, retry time.Duration) {
 				svc.EXPECT().
 					Allowed(mock.Anything, ip).
-					Return(5, nil).
+					Return(allowed, rem, retry, nil).
 					Once()
 			},
 			wantStatus:    http.StatusOK,
 			wantNextCall:  true,
-			wantRemaining: "5",
+			expectHeaders: true,
 		},
 		{
 			name:       "success (fail-open) - service error allows request through",
 			remoteAddr: "192.168.1.1:1234",
-			setupMocks: func(svc *mocks.MockRateLimiterService, ip string) {
+			setupMocks: func(svc *mocks.MockRateLimiterService, ip string, allowed bool, rem int, retry time.Duration) {
 				svc.EXPECT().
 					Allowed(mock.Anything, ip).
-					Return(0, errors.New("redis connection refused")).
+					Return(allowed, rem, retry, errors.New("redis connection refused")).
 					Once()
 			},
-			// Expect 200 OK because the system gracefully fails OPEN
-			wantStatus:   http.StatusOK,
-			wantNextCall: true,
+			wantStatus:    http.StatusOK,
+			wantNextCall:  true,
+			expectHeaders: false, // Middleware skips headers and fails open on error
 		},
 		{
 			name:       "error - malformed remote address",
 			remoteAddr: "invalid-ip-format",
-			setupMocks: func(svc *mocks.MockRateLimiterService, _ string) {
-				// Service should never be called because IP extraction fails
+			setupMocks: func(svc *mocks.MockRateLimiterService, _ string, _ bool, _ int, _ time.Duration) {
+				// Service should never be called
 			},
-			wantStatus:   http.StatusBadRequest,
-			wantNextCall: false,
+			wantStatus:    http.StatusBadRequest,
+			wantNextCall:  false,
+			expectHeaders: false,
 		},
 		{
 			name:       "error - rate limit exceeded",
 			remoteAddr: "192.168.1.1:1234",
-			setupMocks: func(svc *mocks.MockRateLimiterService, ip string) {
+			isAllowed:  false,
+			remaining:  0,
+			retryAfter: 60 * time.Second, // Represents 60 seconds
+			setupMocks: func(svc *mocks.MockRateLimiterService, ip string, allowed bool, rem int, retry time.Duration) {
 				svc.EXPECT().
 					Allowed(mock.Anything, ip).
-					Return(0, nil).
+					Return(allowed, rem, retry, nil).
 					Once()
 			},
-			wantStatus:     http.StatusTooManyRequests,
-			wantNextCall:   false,
-			wantRemaining:  "0",
-			wantRetryAfter: "60",
+			wantStatus:    http.StatusTooManyRequests,
+			wantNextCall:  false,
+			expectHeaders: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			svc := mocks.NewMockRateLimiterService(t)
-			tt.setupMocks(svc, strings.Split(tt.remoteAddr, ":")[0])
+
+			ip := strings.Split(tt.remoteAddr, ":")[0]
+			tt.setupMocks(svc, ip, tt.isAllowed, tt.remaining, tt.retryAfter)
 
 			// Setup Dummy Handler
 			var nextCalled bool
@@ -111,7 +123,7 @@ func TestRateLimiter(t *testing.T) {
 				req.RemoteAddr = tt.remoteAddr
 			}
 			rr := httptest.NewRecorder()
-			
+
 			// Skipping Otel here as non-essential actions only
 			handler.ServeHTTP(rr, req)
 
@@ -119,12 +131,15 @@ func TestRateLimiter(t *testing.T) {
 			require.Equal(t, tt.wantStatus, rr.Code)
 			assert.Equal(t, tt.wantNextCall, nextCalled, "Mismatch in expected execution of next handler")
 
-			// Assert HTTP Headers
-			if tt.wantRemaining != "" {
-				assert.Equal(t, tt.wantRemaining, rr.Header().Get("X-RateLimit-Remaining"))
-			}
-			if tt.wantRetryAfter != "" {
-				assert.Equal(t, tt.wantRetryAfter, rr.Header().Get("Retry-After"))
+			// Assert HTTP Headers using the Shared Truth
+			if tt.expectHeaders {
+				assert.Equal(t, strconv.Itoa(tt.remaining), rr.Header().Get("X-RateLimit-Remaining"))
+
+				if !tt.isAllowed {
+					assert.Equal(t, strconv.Itoa(int(tt.retryAfter.Seconds())), rr.Header().Get("Retry-After"))
+				} else {
+					assert.Empty(t, rr.Header().Get("Retry-After"), "Retry-After should not be set for allowed requests")
+				}
 			}
 		})
 	}

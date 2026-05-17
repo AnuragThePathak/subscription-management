@@ -13,6 +13,9 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 )
 
 // ---------------------------------------------------------------------------
@@ -125,14 +128,25 @@ func TestAuthentication(t *testing.T) {
 			}
 			rr := httptest.NewRecorder()
 
+			// Setup the In-Memory OTel Exporter (The Telemetry Trap)
+			exporter := tracetest.NewInMemoryExporter()
+			tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
+			tracer := tp.Tracer("test-tracer")
+			// Start a span and inject it into the request context BEFORE the middleware
+			ctx, span := tracer.Start(t.Context(), "test-span")
+			req = req.WithContext(ctx)
+
 			handler.ServeHTTP(rr, req)
+
+			// End the span
+			span.End()
 
 			// Assert Wiring & Status
 			require.Equal(t, tt.wantStatus, rr.Code)
 			assert.Equal(t, tt.wantNextCall, nextCalled, "Mismatch in expected execution of next handler")
 
-			// Assert Context Injection (The Vault Lock for Middlewares)
 			if tt.wantNextCall {
+				// Assert Context Injection (The Vault Lock for Middlewares)
 				require.NotNil(t, capturedCtx, "Context should have been captured")
 
 				extractedUserID, ok := appctx.GetUserID(capturedCtx)
@@ -142,6 +156,19 @@ func TestAuthentication(t *testing.T) {
 				extractedEmail, ok := appctx.GetUserEmail(capturedCtx)
 				require.True(t, ok)
 				assert.Equal(t, validEmail, extractedEmail)
+
+				// Assert the Telemetry Lock
+				spans := exporter.GetSpans()
+				require.Len(t, spans, 1)
+
+				var hasEnduserAttr bool
+				for _, attr := range spans[0].Attributes {
+					if attr.Key == semconv.EnduserIDKey {
+						hasEnduserAttr = true
+						assert.Equal(t, validUserID, attr.Value.AsString())
+					}
+				}
+				assert.True(t, hasEnduserAttr, "Expected http.route attribute to be explicitly set on the span")
 			}
 		})
 	}

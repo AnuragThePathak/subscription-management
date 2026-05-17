@@ -69,7 +69,7 @@ func TestWithSubscriptionID(t *testing.T) {
 			tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
 			tracer := tp.Tracer("test-tracer")
 			// Start a span and inject it into the request context BEFORE the middleware
-			ctx, span := tracer.Start(t.Context(), "test-span")
+			ctx, span := tracer.Start(req.Context(), "test-span")
 			req = req.WithContext(ctx)
 
 			// Run the middleware

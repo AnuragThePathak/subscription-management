@@ -12,7 +12,6 @@ import (
 	"github.com/anuragthepathak/subscription-management/internal/api/shared/endpoint"
 	"github.com/anuragthepathak/subscription-management/internal/domain/models"
 	"github.com/anuragthepathak/subscription-management/internal/domain/services/mocks"
-	svcmocks "github.com/anuragthepathak/subscription-management/internal/domain/services/mocks"
 	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -64,7 +63,7 @@ func TestUserController_GetAllUsers(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		setupMocks func(svc *svcmocks.MockUserServiceExternal)
+		setupMocks func(svc *mocks.MockUserServiceExternal)
 		wantStatus int
 		wantUsers  []*models.UserResponse
 	}{
@@ -81,7 +80,7 @@ func TestUserController_GetAllUsers(t *testing.T) {
 		},
 		{
 			name: "Success - empty list and returns 200 OK",
-			setupMocks: func(svc *svcmocks.MockUserServiceExternal) {
+			setupMocks: func(svc *mocks.MockUserServiceExternal) {
 				svc.EXPECT().GetAllUsers(mock.Anything).Return(nil, nil).Once()
 			},
 			wantStatus: http.StatusOK,
@@ -89,7 +88,7 @@ func TestUserController_GetAllUsers(t *testing.T) {
 		},
 		{
 			name: "error - propagates service error",
-			setupMocks: func(svc *svcmocks.MockUserServiceExternal) {
+			setupMocks: func(svc *mocks.MockUserServiceExternal) {
 				svc.EXPECT().
 					GetAllUsers(mock.Anything).
 					Return(nil, apperror.NewDBError(nil)).
@@ -129,13 +128,13 @@ func TestUserController_GetAllUsers(t *testing.T) {
 func TestUserController_GetUserByID(t *testing.T) {
 	tests := []struct {
 		name       string
-		setupMocks func(svc *svcmocks.MockUserServiceExternal)
+		setupMocks func(svc *mocks.MockUserServiceExternal)
 		wantStatus int
 		wantUser   *models.UserResponse
 	}{
 		{
 			name: "success - parses URL param and context, calls service",
-			setupMocks: func(svc *svcmocks.MockUserServiceExternal) {
+			setupMocks: func(svc *mocks.MockUserServiceExternal) {
 				svc.EXPECT().
 					GetUserByID(mock.Anything, defaultUserHex, defaultUserHex).
 					Return(validUser(), nil).
@@ -187,7 +186,7 @@ func TestUserController_GetUserByID(t *testing.T) {
 func TestUserController_DeleteUser(t *testing.T) {
 	tests := []struct {
 		name       string
-		setupMocks func(svc *svcmocks.MockUserServiceExternal)
+		setupMocks func(svc *mocks.MockUserServiceExternal)
 		wantStatus int
 	}{
 		{

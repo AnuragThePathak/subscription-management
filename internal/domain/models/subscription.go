@@ -61,6 +61,9 @@ func (s *Subscription) Validate(now time.Time) error {
 	if s.Price <= 0 {
 		return apperror.NewValidationError("price must be greater than 0")
 	}
+	if s.Currency != USD && s.Currency != EUR && s.Currency != GBP {
+		return apperror.NewValidationError("invalid currency")
+	}
 	if s.Frequency != Monthly && s.Frequency != Yearly {
 		return apperror.NewValidationError("invalid frequency")
 	}

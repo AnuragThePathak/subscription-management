@@ -52,5 +52,6 @@ func (r *redisRateLimiter) Allowed(
 	}
 
 	isAllowed := res.Allowed == 1
-	return isAllowed, res.Remaining, res.RetryAfter, nil
+	retryAfter := max(res.RetryAfter, 0)
+	return isAllowed, res.Remaining, retryAfter, nil
 }

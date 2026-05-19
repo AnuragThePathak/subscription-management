@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // OTelMetricsAdapter bridges the strictly typed domain metrics interface
@@ -17,6 +18,23 @@ import (
 type OTelMetricsAdapter struct {
 	created  metric.Int64Counter
 	canceled metric.Int64Counter
+}
+
+// withSuppressedTracing returns a copy of ctx with a valid but non-sampled remote
+// SpanContext injected. The ParentBased sampler treats subsequent spans as children
+// of a dropped trace, suppressing them without affecting global sampler configuration.
+func withSuppressedTracing(ctx context.Context) context.Context {
+	var tid trace.TraceID
+	tid[15] = 1 // non-zero → IsValid() == true
+	var sid trace.SpanID
+	sid[7] = 1 // non-zero → IsValid() == true
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    tid,
+		SpanID:     sid,
+		TraceFlags: 0,    // NOT sampled
+		Remote:     true, // ParentBased inspects Remote vs Local differently; Remote is required here
+	})
+	return trace.ContextWithRemoteSpanContext(ctx, sc)
 }
 
 // stateProvider defines the exact data the metrics adapter needs from the outside world.
@@ -54,7 +72,10 @@ func NewMetricsAdapter(cfg Config, state stateProvider) (*OTelMetricsAdapter, er
 	}
 
 	_, err = meter.RegisterCallback(func(ctx context.Context, o metric.Observer) error {
-		activeSubscriptionsCount, sErr := state.CountActiveSubscriptions(ctx, time.Now())
+		// Suppress tracing so otelmongo does not emit a span on every Prometheus scrape.
+		activeSubscriptionsCount, sErr := state.CountActiveSubscriptions(
+			withSuppressedTracing(ctx), time.Now(),
+		)
 		if sErr != nil {
 			slog.ErrorContext(ctx,
 				"Failed to fetch active subscriptions count for telemetry",

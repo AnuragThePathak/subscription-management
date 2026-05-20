@@ -254,7 +254,7 @@ func main() {
 					logattr.Queue(cf.Asynq.QueueName),
 					logattr.Concurrency(cf.QueueWorker.Concurrency),
 					logattr.Error(startErr))
-				os.Exit(0)
+				os.Exit(1)
 			}
 
 			schedulerWorkerAdapter = &adapters.QueueWorker{

@@ -1,672 +1,431 @@
 # Architecture
 
-This document describes the internal architecture of the Subscription Management Service. It is intended for developers who want to understand how the system works, contribute to the codebase, or learn from its design patterns.
+This document explains the structural design decisions behind the codebase — how layers interact, why interfaces are shaped the way they are, and how the background processing pipeline works.
 
---
-
-## How to Use This Document
-
-This document is a technical reference, not a linear tutorial.
-
-- New readers should start with **Service Architecture Overview** and **Design Tradeoffs**
-- Contributors working on specific areas can jump directly to:
-  - Repository Pattern
-  - Scheduler Internals
-  - Authentication Flow
-- Most developers do not need to read this end-to-end
+For the observability story (tracing, metrics, logging), see [OBSERVABILITY.md](OBSERVABILITY.md).
 
 ---
 
-## Quick Reference
+## Layer Overview
 
-This section provides lookup tables for common values and types. Use this when you need to quickly check valid options.
+```mermaid
+graph TB
+    subgraph API["API Layer — internal/api/"]
+        direction TB
+        MW["Middleware Pipeline"]
+        Controllers
+        Endpoint["endpoint.RequestHandler"]
+        AppError["apperror.AppError"]
+    end
 
-### Subscription Status Values
+    subgraph Domain["Domain Layer — internal/domain/"]
+        direction TB
+        Models
+        ServiceInterfaces["Service Interfaces"]
+        ServiceImpls["Service Implementations"]
+        RepoInterfaces["Repository Interfaces"]
+        TxnFn["TxnFn"]
+    end
 
-| Status | Meaning | Transitions To |
-|--------|---------|----------------|
-| `active` | Currently valid, will auto-renew | `canceled` (user action) |
-| `canceled` | Will not renew, but still valid until `ValidTill` | `expired` (automatic) |
-| `expired` | No longer valid | (terminal state) |
+    subgraph Background["Background — internal/scheduler/"]
+        direction TB
+        Scheduler
+        QueueWorker["Queue Worker"]
+    end
 
-### Billing Frequencies
+    subgraph Core["Core — internal/core/"]
+        Clock["clock.NowFn"]
+        AppCtx["appctx"]
+        LogAttr["logattr"]
+        OtelAttr["otelattr"]
+    end
 
-| Frequency | ValidTill Extension | Use Case |
-|-----------|--------------------|---------|
-| `monthly` | +1 month | Standard billing |
-| `yearly` | +1 year | Annual plans |
+    subgraph Infrastructure["Infrastructure"]
+        direction TB
+        Adapters["internal/adapters/"]
+        MongoRepos["Repository Impls<br/><small>internal/domain/repositories/</small>"]
+        OTelPkg["internal/observability/"]
+        Config["internal/config/"]
+        Notifications["internal/notifications/"]
+        Lib["internal/lib/"]
+    end
 
-### Subscription Categories
+    Controllers --> ServiceInterfaces
+    ServiceImpls --> RepoInterfaces
+    ServiceImpls --> TxnFn
+    ServiceImpls --> Clock
 
-`sports` · `news` · `entertainment` · `lifestyle` · `technology` · `finance` · `politics` · `other`
+    Scheduler --> ServiceInterfaces
+    QueueWorker --> ServiceInterfaces
+    QueueWorker --> Notifications
 
-### Supported Currencies
+    MongoRepos -.->|implements| RepoInterfaces
+    Adapters --> MongoDB[(MongoDB)]
+    Adapters --> Redis[(Redis)]
+    MongoRepos --> Lib
+```
 
-`USD` · `EUR` · `GBP`
-
-### Error Codes Reference
-
-| Code | HTTP | When to Use |
-|------|------|-------------|
-| `VALIDATION` | 400 | Invalid input format or values |
-| `UNAUTHORIZED` | 401 | Missing or invalid JWT token |
-| `FORBIDDEN` | 403 | Valid token but insufficient permissions |
-| `NOT_FOUND` | 404 | Resource doesn't exist |
-| `CONFLICT` | 409 | Duplicate resource (e.g., email already registered) |
-| `RATE_LIMITED` | 429 | Too many requests |
-| `INTERNAL` | 500 | Unexpected server error |
-| `DB_ERROR` | 500 | Database operation failed |
-| `TIMEOUT` | 504 | Request timeout |
-
-### Key File Locations
-
-| Concern | Location |
-|---------|----------|
-| Domain models | `internal/domain/models/` |
-| Business logic | `internal/domain/services/` |
-| Repository interfaces | `internal/domain/repositories/` |
-| HTTP handlers | `internal/api/controllers/` |
-| Middleware | `internal/api/middlewares/` |
-| Error types | `internal/api/shared/apperror/` |
-| Configuration | `internal/api/shared/config/` |
-| Background tasks | `internal/scheduler/` |
-| Email templates | `internal/notifications/` |
+**Dependency rule**: imports flow inward. Domain packages never import API or infrastructure packages. The API layer depends on domain interfaces, not concrete implementations.
 
 ---
 
-## Service Architecture Overview
+## Domain Layer
 
-The system is a **loosely coupled monolith** consisting of two main runtime components that share a single process:
+### Models — [`internal/domain/models/`](../internal/domain/models/)
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              main.go                                        │
-│                         (dependency wiring)                                 │
-│                                                                             │
-│    ┌─────────────────────────────┐    ┌─────────────────────────────┐      │
-│    │        API Server           │    │    Background Scheduler     │      │
-│    │                             │    │                             │      │
-│    │  - HTTP handlers (chi)      │    │  - Polling loop             │      │
-│    │  - Authentication           │    │  - Task enqueueing          │      │
-│    │  - Rate limiting            │    │                             │      │
-│    │  - Request validation       │    │                             │      │
-│    └──────────────┬──────────────┘    └──────────────┬──────────────┘      │
-│                   │                                  │                      │
-│                   ▼                                  ▼                      │
-│    ┌─────────────────────────────────────────────────────────────────┐     │
-│    │                        Domain Services                          │     │
-│    │                                                                  │     │
-│    │  - SubscriptionService    - AuthService    - UserService        │     │
-│    │  - JWTService             - RateLimiterService                  │     │
-│    └──────────────────────────────┬──────────────────────────────────┘     │
-│                                   │                                        │
-│                                   ▼                                        │
-│    ┌─────────────────────────────────────────────────────────────────┐     │
-│    │                    Repository Interfaces                        │     │
-│    │                                                                  │     │
-│    │  UserRepository    SubscriptionRepository    BillRepository     │     │
-│    └──────────────────────────────┬──────────────────────────────────┘     │
-│                                   │                                        │
-│                                   ▼                                        │
-│    ┌──────────────────────────────────────────────────────────────────┐    │
-│    │                       Infrastructure                             │    │
-│    │                                                                   │    │
-│    │       MongoDB                Redis               SMTP             │    │
-│    └──────────────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────────────────┘
+Pure data structures with self-validation. Each model has three forms:
+
+| Form | Purpose | Example |
+|---|---|---|
+| **Model** (`Subscription`) | Database representation with BSON tags | Passed to repositories |
+| **Request** (`SubscriptionRequest`) | API input with JSON + validator tags | Decoded from HTTP body |
+| **Response** (`SubscriptionResponse`) | API output with JSON tags | Returned to clients |
+
+Models own their own validation via `Validate()` methods. This means validation rules live with the data, not scattered across controllers or services.
+
+```go
+// Validation is a method on the model, not a separate validator
+func (s *Subscription) Validate(now time.Time) error {
+    if s.Name == "" || len(s.Name) < 2 || len(s.Name) > 100 {
+        return apperror.NewValidationError("name must be between 2 and 100 characters")
+    }
+    // ...
+}
 ```
 
-**Key architectural decisions:**
+> Note: `Validate()` accepts `now time.Time` rather than calling `time.Now()` internally. This makes validation deterministic in tests.
 
-- Both components run as goroutines in the same process, simplifying deployment
-- They share domain services but have separate entry points (HTTP vs polling loop)
-- Infrastructure connections (MongoDB, Redis) are established once and shared
-- Graceful shutdown coordinates all components via context cancellation
+### Repository Interfaces — [`internal/domain/repositories/`](../internal/domain/repositories/)
 
----
-
-## Request Flow
-
-### HTTP Request Path
-
-```
-HTTP Request
-     │
-     ▼
-┌────────────────────┐
-│   chi.Router       │
-│  - Logger          │
-│  - Recoverer       │
-│  - Rate Limiter    │
-└─────────┬──────────┘
-          │
-          ▼
-┌────────────────────┐
-│ Auth Middleware    │  ← Validates JWT, extracts claims
-│ (protected routes) │    Stores user ID in context
-└─────────┬──────────┘
-          │
-          ▼
-┌────────────────────┐
-│   Controller       │  ← Parses request, calls service
-│   (handlers)       │    Returns JSON response
-└─────────┬──────────┘
-          │
-          ▼
-┌────────────────────┐
-│   Domain Service   │  ← Business logic, validation
-│                    │    Authorization checks
-└─────────┬──────────┘
-          │
-          ▼
-┌────────────────────┐
-│   Repository       │  ← MongoDB operations
-│   Implementation   │    Error translation
-└────────────────────┘
-```
-
-### Error Handling Through Layers
-
-Each layer handles errors differently:
-
-| Layer | Error Handling |
-|-------|----------------|
-| **Repository** | Translates MongoDB errors to `AppError` types |
-| **Service** | Returns `AppError` for business rule violations |
-| **Controller** | Converts `AppError` to HTTP response using status code |
-| **Middleware** | Catches panics, logs errors, returns structured responses |
-
----
-
-## Domain Model
-
-### Entity Relationships
-
-```
-┌─────────────┐
-│    User     │
-│             │
-│ - ID        │
-│ - Name      │
-│ - Email     │
-│ - Password  │
-└──────┬──────┘
-       │
-       │ 1:N
-       ▼
-┌─────────────────┐          1:N         ┌────────────┐
-│  Subscription   │─────────────────────►│    Bill    │
-│                 │                       │            │
-│ - ID            │                       │ - ID       │
-│ - Name          │                       │ - Amount   │
-│ - Price         │                       │ - Currency │
-│ - Currency      │                       │ - StartDate│
-│ - Frequency     │                       │ - EndDate  │
-│ - Category      │                       │ - Status   │
-│ - Status        │                       └────────────┘
-│ - ValidTill     │
-│ - UserID (FK)   │
-└─────────────────┘
-```
-
-### Subscription State Machine
-
-```
-                           ┌──────────────────────────────────────┐
-                           │                                      │
-                   user    │                                      │ scheduler
-                 creates   │              ACTIVE                  │ auto-renews
-            ───────────────►             ───────────────────────────►
-                           │  (ValidTill in future)               │  (extends ValidTill,
-                           │                                      │   creates Bill)
-                           └──────────────────┬───────────────────┘
-                                              │
-                                              │ user cancels
-                                              │ (marks canceled,
-                                              │  ValidTill unchanged)
-                                              ▼
-                           ┌──────────────────────────────────────┐
-                           │                                      │
-                           │            CANCELED                  │
-                           │                                      │
-                           │  (still valid until ValidTill)       │
-                           │  (no auto-renewal scheduled)         │
-                           │                                      │
-                           └──────────────────┬───────────────────┘
-                                              │
-                                              │ ValidTill passes
-                                              │ (scheduler marks expired)
-                                              ▼
-                           ┌──────────────────────────────────────┐
-                           │                                      │
-                           │             EXPIRED                  │
-                           │                                      │
-                           │  (no longer valid)                   │
-                           │                                      │
-                           └──────────────────────────────────────┘
-```
-
-**Business invariants:**
-
-1. Only expired subscriptions can be hard deleted
-2. Canceled subscriptions remain usable until `ValidTill`
-3. Only active subscriptions are auto-renewed
-4. Refunds are only possible if the current billing period hasn't started
-
-### Billing Frequency
-
-The `Frequency` type determines how `ValidTill` is calculated on renewal:
-
-| Frequency | Extension |
-|-----------|-----------|
-| `monthly` | +1 month |
-| `yearly` | +1 year |
-
----
-
-## Repository Pattern
-
-### Interface Definition
-
-Repositories are defined as interfaces in the `domain/repositories` package:
+Repository interfaces are defined **in the domain layer**, not in the infrastructure layer. This is an intentional departure from the typical "interfaces in the consumer" pattern — here the domain declares the contract, and the infrastructure fulfills it.
 
 ```go
 type SubscriptionRepository interface {
     Create(context.Context, *models.Subscription) (*models.Subscription, error)
     GetByID(context.Context, bson.ObjectID) (*models.Subscription, error)
-    GetAll(context.Context) ([]*models.Subscription, error)
-    GetByUserID(context.Context, bson.ObjectID) ([]*models.Subscription, error)
-    GetActiveSubscriptions(context.Context) ([]*models.Subscription, error)
-    GetSubscriptionsDueForReminder(context.Context, []int) ([]*models.Subscription, error)
     GetSubscriptionsDueForRenewal(context.Context, time.Time, time.Time) ([]*models.Subscription, error)
-    GetCanceledExpiredSubscriptions(context.Context) ([]*models.Subscription, error)
-    Update(ctx context.Context, subscription *models.Subscription) (*models.Subscription, error)
-    Delete(ctx context.Context, id bson.ObjectID) error
+    // ...
 }
 ```
 
-**Design rationale:**
+The implementations live in the same package (e.g., `subscriptionRepository` struct) because they're tightly coupled to the MongoDB query layer. Integration tests also live here, using [Testcontainers](https://testcontainers.com/) for real MongoDB instances.
 
-- Services depend on interfaces, not implementations
-- MongoDB-specific code is isolated in repository implementations
-- Enables testing with in-memory fakes
-- Database migration is feasible without rewriting service logic
+### Transaction Abstraction — [`TxnFn`](../internal/domain/repositories/txn.go)
 
-### MongoDB Implementation Details
-
-Each repository:
-
-1. Creates required indexes on initialization
-2. Uses the `lib` package helpers for common query patterns
-3. Translates MongoDB errors to `AppError` types
-4. Uses `context.Context` for timeout and cancellation
-
-**Index strategy:**
+Services need to run multi-document transactions without importing `mongo`. The solution is a function type:
 
 ```go
-// SubscriptionRepository indexes
-{Key: "user_id"}                      // Fast lookup by owner
-{Key: ["status", "valid_till"]}       // Scheduler queries
+type TxnFn func(ctx context.Context, fn func(ctx context.Context) error) error
 ```
+
+The service receives `TxnFn` as a constructor dependency. In production, `mongoTxnExecutor.WithTransaction` provides real MongoDB transactions. In unit tests, a simple `noopTxnFn` executes the callback directly:
+
+```go
+func noopTxnFn(ctx context.Context, fn func(context.Context) error) error {
+    return fn(ctx)  // no transaction, just execute
+}
+```
+
+This means service unit tests run without any database at all.
 
 ---
 
-## Error Handling Strategy
+## Service Layer — [`internal/domain/services/`](../internal/domain/services/)
 
-### AppError Structure
+### Interface Segregation
 
-The `apperror` package defines structured application errors:
-
-```go
-type AppError interface {
-    error
-    Code() ErrorCode      // e.g., "NOT_FOUND", "VALIDATION"
-    Message() string      // User-facing message
-    Status() int          // HTTP status code
-    Unwrap() error        // Original error for debugging
-}
-```
-
-### Error Codes
-
-| Code | HTTP Status | Usage |
-|------|-------------|-------|
-| `INTERNAL` | 500 | Unexpected errors |
-| `UNAUTHORIZED` | 401 | Missing/invalid token |
-| `FORBIDDEN` | 403 | Insufficient permissions |
-| `NOT_FOUND` | 404 | Resource doesn't exist |
-| `CONFLICT` | 409 | Duplicate resource |
-| `VALIDATION` | 400 | Invalid input |
-| `RATE_LIMITED` | 429 | Too many requests |
-| `DB_ERROR` | 500 | Database failures |
-| `TIMEOUT` | 504 | Request timeout |
-
-### Error Flow
-
-```
-Repository Error          Service Error            Controller Response
-────────────────          ─────────────            ─────────────────────────────────────────────
-mongo.ErrNoDocuments  →   NotFoundError       →   HTTP 404 + {"error": "..."} (optionally code)
-DuplicateKeyError     →   ConflictError       →   HTTP 409 + {"error": "..."} (optionally code)
-```
-
-The HTTP status code is the canonical signal for error class.
-The JSON body always includes `error` and may include `code` depending on response wiring.
-
----
-
-## Authentication Flow
-
-### Token Types
-
-The system uses two JWT token types:
-
-| Token | Purpose | Expiry | Secret |
-|-------|---------|--------|--------|
-| **Access** | API authorization | Short (1h default) | `access_secret` |
-| **Refresh** | Get new access tokens | Long (7d default) | `refresh_secret` |
-
-### JWT Claims Structure
+Each service exposes two interfaces:
 
 ```go
-type Claims struct {
-    UserID string    `json:"userId"`
-    Email  string    `json:"email"`
-    Type   TokenType `json:"type"`    // "access" or "refresh"
-    jwt.RegisteredClaims
-}
-```
-
-### Authentication Middleware
-
-The middleware:
-
-1. Extracts `Bearer` token from `Authorization` header
-2. Validates token signature and expiry using `access_secret`
-3. Verifies token type is `access`
-4. Stores user ID and email in request context
-5. Downstream handlers access via `context.Value()`
-
-### Token Refresh Flow
-
-```
-Client                                    Server
-───────                                   ──────
-    │                                         │
-    │  POST /auth/refresh                     │
-    │  Body: { refreshToken: "..." }          │
-    │────────────────────────────────────────►│
-    │                                         │
-    │                          Validate refresh token
-    │                          Generate new access token
-    │                          Generate new refresh token
-    │                                         │
-    │◄────────────────────────────────────────│
-    │  { accessToken: "...", refreshToken: "...", expiresAt: "..." }
-```
-
----
-
-## Scheduler Internals
-
-### Polling Loop
-
-The scheduler runs a polling loop at configurable intervals (default: 12 hours):
-
-```go
-func (s *SubscriptionScheduler) Start(ctx context.Context) error {
-    ticker := time.NewTicker(s.interval)
-    defer ticker.Stop()
-
-    // Run immediately on startup
-    s.pollSubscriptions(ctx)
-
-    for {
-        select {
-        case <-ctx.Done():
-            return ctx.Err()
-        case <-ticker.C:
-            s.pollSubscriptions(ctx)
-        }
-    }
-}
-```
-
-### Task Types
-
-| Task | Trigger | Action |
-|------|---------|--------|
-| `subscription:reminder` | N days before renewal | Send reminder email |
-| `subscription:renewal` | 8 hours before ValidTill | Extend ValidTill, create Bill, send confirmation |
-| `subscription:expiration` | ValidTill passed (canceled) | Mark status as `expired` |
-
-### Task Deduplication
-
-The scheduler uses Redis keys to prevent duplicate task processing:
-
-```go
-// Reminder dedup key (expires after 24h)
-redisKey := fmt.Sprintf("reminder_sent:%s:%d", subscriptionID, daysBefore)
-
-// Check if already sent
-exists, _ := s.redisClient.Exists(ctx, redisKey).Result()
-if exists == 0 {
-    s.scheduleReminderTask(subscription, daysBefore)
-}
-```
-
-### Asynq Task Options
-
-Each task is enqueued with retry and timeout semantics:
-
-```go
-s.client.Enqueue(
-    task,
-    asynq.Unique(24*time.Hour),     // Prevent duplicate pending tasks
-    asynq.Retention(24*time.Hour),  // Keep completed tasks for debugging
-    asynq.Timeout(45*time.Second),  // Handler must complete in time
-    asynq.MaxRetry(3),              // Retry on transient failures
-)
-```
-
-### Worker Processing
-
-The worker registers handlers for each task type:
-
-```go
-mux := asynq.NewServeMux()
-mux.HandleFunc(ReminderTask, w.handleSubscriptionReminder)
-mux.HandleFunc(RenewalTask, w.handleSubscriptionRenewal)
-mux.HandleFunc(ExpirationTask, w.handleSubscriptionExpiration)
-```
-
-**Renewal handler logic:**
-
-1. Parse task payload (subscription ID, renewal date)
-2. Fetch current subscription state
-3. Verify still active and not already renewed
-4. Calculate new `ValidTill` based on frequency
-5. Create billing record
-6. Update subscription
-7. Send confirmation email
-
----
-
-## Service Layer Design
-
-### External vs Internal Interfaces
-
-Services expose two interfaces:
-
-```go
-// For API controllers (external callers)
-type SubscriptionServiceExternal interface {
-    CreateSubscription(ctx, *Subscription, claimedUserID) (*Subscription, error)
-    GetSubscriptionByID(ctx, id, claimedUserID) (*Subscription, error)
-    CancelSubscription(ctx, id, claimedUserID) (*Subscription, error)
-    // ... API-facing operations
+type SubscriptionServiceExternal interface {    // API-facing
+    CreateSubscription(context.Context, *models.Subscription, string) (*models.Subscription, error)
+    CancelSubscription(context.Context, string, string) (*models.Subscription, error)
+    // ...
 }
 
-// For scheduler/worker (internal callers)
-type SubscriptionServiceInternal interface {
-    RenewSubscriptionInternal(ctx, id) (*Subscription, error)
-    FetchSubscriptionsDueForRenewalInternal(ctx, start, end) ([]*Subscription, error)
-    MarkCanceledSubscriptionAsExpiredInternal(ctx, id) error
-    // ... scheduler-facing operations
+type SubscriptionServiceInternal interface {     // Scheduler/Worker-facing
+    RenewSubscriptionInternal(context.Context, bson.ObjectID) (*models.Subscription, error)
+    FetchUpcomingRenewalsInternal(context.Context, []int) ([]*models.Subscription, error)
+    // ...
 }
 
-// Combined for dependency injection
 type SubscriptionService interface {
     SubscriptionServiceExternal
     SubscriptionServiceInternal
 }
 ```
 
-**Design rationale:**
+**Why split?** The API controllers only see `SubscriptionServiceExternal` — they can't accidentally call internal renewal logic. The scheduler/worker depends on `SubscriptionServiceInternal`. The full `SubscriptionService` interface is only used at the composition root ([`main.go`](../main.go)) where everything is wired together.
 
-- Clear separation between what API can do vs what scheduler can do
-- `claimedUserID` parameter enforces authorization for external callers
-- Internal methods skip authorization checks (trusted caller)
-- Single implementation satisfies both interfaces
+### Clock Injection
 
-### Authorization Pattern
-
-External methods include authorization:
+All services accept a [`clock.NowFn`](../internal/core/clock/clock.go) — a function type `func() time.Time`:
 
 ```go
-func (s *subscriptionService) GetSubscriptionByID(
-    ctx context.Context,
-    id string,
-    claimedUserID string,
-) (*models.Subscription, error) {
-    subscription, err := s.subscriptionRepository.GetByID(ctx, oid)
-    if err != nil {
-        return nil, err
-    }
+func NewSubscriptionService(
+    txnFn    repositories.TxnFn,
+    subRepo  repositories.SubscriptionRepository,
+    billRepo repositories.BillRepository,
+    metrics  SubscriptionMetrics,
+    nowFn    clock.NowFn,           // time.Now in production
+) SubscriptionService
+```
 
-    // Authorization check
-    if subscription.UserID.Hex() != claimedUserID {
-        return nil, apperror.NewForbiddenError("access denied")
-    }
+In production: `time.Now`. In tests: `func() time.Time { return mockTime }`. This avoids test flakiness from wall-clock drift without requiring a global clock mock.
 
-    return subscription, nil
+### Metrics Port
+
+The `SubscriptionMetrics` interface decouples domain events from the telemetry backend:
+
+```go
+type SubscriptionMetrics interface {
+    IncSubscriptionsCreated(ctx context.Context)
+    IncSubscriptionsCanceled(ctx context.Context)
 }
 ```
 
+The [`OTelMetricsAdapter`](../internal/observability/metrics.go) implements this with real OpenTelemetry counters. When OTel is disabled, a [`NewNoOpMetricsAdapter()`](../internal/observability/metrics.go) provides safe no-op instruments backed by OTel's built-in `noop` package — no nil checks needed in the domain.
+
 ---
 
-## Design Tradeoffs
+## API Layer
 
-### Why MongoDB?
+### Middleware Pipeline — [`internal/api/middlewares/`](../internal/api/middlewares/)
 
-**Pros for this use case:**
+The middleware chain is applied in order, each wrapping the next:
 
-- Document model fits subscription entities naturally
-- Flexible schema for future extensions (custom fields, metadata)
-- Good performance for time-range queries with proper indexes
-- Simpler operational model for a learning project
+```
+OTel → Recoverer → Logger → Timeout → Rate Limiter → [route handler]
+```
 
-**Tradeoffs:**
+| Middleware | Source | Purpose |
+|---|---|---|
+| **OTel** | [`otel.go`](../internal/api/middlewares/otel.go) | Creates a trace span per request. Injects `trace_id` into context for downstream correlation. Resolves chi route patterns for span naming. Conditionally applied based on config. |
+| **Recoverer** | chi built-in | Catches panics, logs stack trace, returns 500. |
+| **Logger** | chi built-in | Colorized request/response logging. Useful for local development readability; not intended for production use. |
+| **Timeout** | [`timeout.go`](../internal/api/middlewares/timeout.go) | Enforces configurable request deadline via `context.WithTimeout`. |
+| **Rate Limiter** | [`rate_limiter.go`](../internal/api/middlewares/rate_limiter.go) | Per-IP rate limiting. See [Fail-Open Design](#fail-open-rate-limiter) below. |
 
-- No transactional guarantees across collections (renewal + bill creation)
-- Denormalization required for some queries
+Protected routes add an **Authentication** middleware that validates JWT access tokens and injects the user ID into context via `appctx.WithUserID`.
 
-### Why Asynq?
+### Client IP Extraction — [`lib.ClientIP`](../internal/lib/net.go)
 
-**Chosen over alternatives:**
+The rate limiter needs the true client IP, which is harder than it sounds behind proxies. `ClientIP` implements spoofing-resistant extraction:
 
-| Alternative | Why not |
-|-------------|---------|
-| Database polling | No retry semantics, harder to scale workers |
-| RabbitMQ | Operational overhead, overkill for this scale |
-| In-process queue | Lost on restart, can't scale workers independently |
+1. **Trust boundary check**: If `RemoteAddr` is a public IP, it's a direct connection — return it immediately and **ignore all headers** (an attacker can set `X-Forwarded-For` to anything).
+2. **Right-to-left XFF traversal**: If `RemoteAddr` is private (behind a proxy), traverse `X-Forwarded-For` from the rightmost entry leftward. The first public IP found is the true client — leftmost entries are attacker-controlled.
+3. **`X-Real-IP` fallback**: If XFF yields no public IP, check `X-Real-IP`.
+4. **Ultimate fallback**: If everything is private, return `RemoteAddr` itself.
 
-**Asynq provides:**
+All IP parsing uses `netip.ParseAddr` (Go 1.18+) for proper validation. The XFF traversal uses `strings.LastIndexByte` with zero allocation — no `strings.Split` creating a slice per request.
 
-- Redis-backed persistence
-- Automatic retries with backoff
-- Task deduplication
-- Monitoring via asynqmon
+### Fail-Open Rate Limiter
 
-### Why chi Router?
+The rate limiter deserves special attention. It uses Redis via `go-redis/redis_rate` for distributed per-IP counting, but the **error path is designed to fail open**:
 
-**Pros:**
+```go
+isAllowed, remaining, retryAfter, err := rateLimiterService.Allowed(r.Context(), ip)
+if err != nil {
+    // Redis is down — log it, record it in the trace, but let the request through
+    span.RecordError(err)
+    span.SetStatus(codes.Error, "Rate limiter service error. Failing OPEN")
 
-- Lightweight, stdlib-compatible
-- Middleware chaining without magic
-- URL parameter parsing
-- Small dependency surface on top of net/http (chi router + middleware stack)
+    // Throttle error logs to avoid flooding (at most once per 60s)
+    now := time.Now().Unix()
+    last := lastErrLog.Load()
+    if now-last > failOpenLogInterval {
+        if lastErrLog.CompareAndSwap(last, now) {
+            slog.ErrorContext(r.Context(), "Rate limiter service error. Failing OPEN", ...)
+        }
+    }
+
+    next.ServeHTTP(w, r)  // ← request proceeds
+    return
+}
+```
+
+Key details:
+- **`atomic.Int64` + `CompareAndSwap`**: Prevents log flooding during a Redis outage. Only one goroutine per 60-second window will write the log.
+- **Trace annotation**: Even when failing open, the error is recorded in the OTel span so you can see the rate-limiter degradation in Jaeger.
+- **No panic, no 500**: Availability is prioritized over strict rate enforcement.
+
+### Request Handler — [`endpoint.RequestHandler`](../internal/api/shared/endpoint/endpoint.go)
+
+Controllers don't write HTTP responses directly. Instead, they delegate to `RequestHandler.ServeRequest()`, which provides a uniform pipeline:
+
+1. **Decode + Validate** the request body (JSON → struct → `go-playground/validator`)
+2. **Execute** the endpoint logic (a closure returning `(any, error)`)
+3. **Handle errors**: `AppError` → appropriate HTTP status + structured JSON. Unhandled errors → 500 with a generic message. 5xx errors are recorded in the OTel span.
+4. **Write** the success response with the configured status code.
+
+```go
+func (c *subscriptionController) createSubscription(w http.ResponseWriter, r *http.Request) {
+    subscription := models.SubscriptionRequest{}
+    userID, _ := appctx.GetUserID(r.Context())
+
+    c.requestHandler.ServeRequest(endpoint.InternalRequest{
+        W:          w,
+        R:          r,
+        ReqBodyObj: &subscription,
+        EndpointLogic: func() (any, error) {
+            return endpoint.ToResponse(
+                c.subscriptionService.CreateSubscription(r.Context(), subscription.ToModel(), userID),
+            )
+        },
+        SuccessCode: http.StatusCreated,
+    })
+}
+```
+
+The `ToResponse` and `ToResponseSlice` generic helpers eliminate the model→response conversion boilerplate. The [`InternalModel[T]`](../internal/api/shared/endpoint/response.go) constraint requires a `ToResponse() *T` method — the generics handle error short-circuiting and slice conversion automatically.
+
+### Error System — [`apperror`](../internal/api/shared/apperror/)
+
+Errors are typed with an `ErrorCode` that maps to HTTP status codes:
+
+| ErrorCode | HTTP Status | Example |
+|---|---|---|
+| `VALIDATION` | 400 | "name must be between 2 and 100 characters" |
+| `BAD_REQUEST` | 400 | "Invalid subscription ID" |
+| `UNAUTHORIZED` | 401 | "Invalid credentials" |
+| `FORBIDDEN` | 403 | "You are not allowed to view this subscription" |
+| `NOT_FOUND` | 404 | "Subscription not found" |
+| `CONFLICT` | 409 | "Only active subscriptions can be canceled" |
+| `RATE_LIMITED` | 429 | "Rate limit exceeded" |
+| `TIMEOUT` | 504 | "Request timed out" |
+| `INTERNAL` | 500 | "Something went wrong" (generic, wraps original error) |
+| `DB_ERROR` | 500 | "Database error" (wraps driver error) |
+
+Errors can carry optional `slog.Attr` log attributes via `WithLogAttributes()` — for example, attaching the attempted email on a duplicate user conflict. These attributes appear in the structured log output but are **never** exposed to the client.
+
+---
+
+## Shared Infrastructure — [`internal/lib/`](../internal/lib/)
+
+### Generic MongoDB Helpers
+
+The [`lib`](../internal/lib/mongo.go) package provides generic CRUD wrappers (`FindOne[T]`, `FindMany[T]`, `Create`, `Update`, `Delete`) that eliminate per-entity boilerplate while applying **unified error classification**:
+
+```go
+func FindOne[T any](ctx context.Context, collection *mongo.Collection, filter bson.M, ...) (*T, error) {
+    var res T
+    err := collection.FindOne(ctx, filter, opts...).Decode(&res)
+    if err != nil {
+        if errors.Is(err, mongo.ErrNoDocuments) {
+            return nil, apperror.NewNotFoundError("Document not found")
+        }
+        if errors.Is(err, context.DeadlineExceeded) {
+            return nil, apperror.NewTimeoutError(err)
+        }
+        return nil, apperror.NewDBError(err)
+    }
+    return &res, nil
+}
+```
+
+Every repository method (`subscriptionRepository.GetByID`, `billRepository.Create`, etc.) delegates to these helpers. The error classification — duplicate key → `Conflict`, deadline exceeded → `Timeout`, no documents → `NotFound`, everything else → `DBError` — is written once and applied consistently across every query.
+
+### URI Construction
+
+[`BuildMongoURI`](../internal/lib/mongo.go) constructs connection strings using Go's `url.URL` struct rather than string concatenation. This automatically handles credential escaping (special characters in passwords) and detects Atlas SRV endpoints (`mongodb+srv://`) by host suffix.
+
+---
+
+## Background Processing
+
+```mermaid
+graph LR
+    subgraph Scheduler["Scheduler Loop"]
+        Poll["Poll<br/>(ticker)"]
+        Reminders["Phase:<br/>Reminders"]
+        Renewals["Phase:<br/>Renewals"]
+        Expirations["Phase:<br/>Expirations"]
+    end
+
+    subgraph Queue["Asynq + Redis"]
+        TaskQueue["Task Queue"]
+    end
+
+    subgraph Worker["Queue Worker"]
+        ReminderHandler["Reminder<br/>Handler"]
+        RenewalHandler["Renewal<br/>Handler"]
+        ExpirationHandler["Expiration<br/>Handler"]
+    end
+
+    subgraph External["External Services"]
+        SMTP["Email<br/>(SMTP)"]
+        DB[(MongoDB)]
+    end
+
+    Poll --> Reminders & Renewals & Expirations
+    Reminders -- enqueue --> TaskQueue
+    Renewals -- enqueue --> TaskQueue
+    Expirations -- enqueue --> TaskQueue
+
+    TaskQueue --> ReminderHandler & RenewalHandler & ExpirationHandler
+    ReminderHandler --> SMTP
+    RenewalHandler --> DB
+    ExpirationHandler --> DB
+    ReminderHandler --> DB
+```
+
+### Scheduler — [`internal/scheduler/scheduler.go`](../internal/scheduler/scheduler.go)
+
+The scheduler is a polling loop that runs on a configurable interval (default: 12h). Each tick executes three phases:
+
+| Phase | Query | Task Enqueued | Deduplication |
+|---|---|---|---|
+| **Reminders** | Active subscriptions due in N days (configurable: `[1, 3, 7]`) | `subscription:reminder` | Redis key `reminder_sent:{subID}:{days}` with 24h TTL |
+| **Renewals** | Active subscriptions whose `valid_till` falls within ±4 hours of now | `subscription:renewal` | Asynq `Unique(24h)` |
+| **Expirations** | Canceled subscriptions past their `valid_till` | `subscription:expiration` | Asynq `Unique(24h)` |
+
+Each task carries a JSON payload with the subscription ID, user ID, and **W3C trace context headers** injected via `observability.InjectIntoTaskHeaders()`. This means a trace started in the scheduler tick can be continued by the worker — the full lifecycle is visible in Jaeger as a single trace.
+
+> Note: The user ID in the payload is **not needed for business logic** — the worker fetches the subscription document from MongoDB, which already contains the user ID. It's carried in the payload purely for **observability**: if the worker errors out before the MongoDB fetch, the user ID is still available for logs and trace attributes. Without it, early failures would produce log lines and spans with no user context.
+
+Task enqueue options include `Timeout`, `MaxRetry`, `Retention`, and `Unique` constraints — all configured per task type.
+
+### Queue Worker — [`internal/scheduler/worker.go`](../internal/scheduler/worker.go)
+
+The worker is an Asynq server that processes tasks from the queue:
+
+| Task | Handler Logic |
+|---|---|
+| `subscription:reminder` | Fetch subscription → verify still active → fetch user → send reminder email via SMTP → mark as sent in Redis |
+| `subscription:renewal` | Fetch subscription → verify active + within renewal window → call `RenewSubscriptionInternal` (creates bill + updates validity in a transaction) → send confirmation email |
+| `subscription:expiration` | Fetch subscription → verify canceled + past validity → call `MarkCanceledSubscriptionAsExpiredInternal` |
+
+The worker uses `observability.AsynqTracingMiddleware` to extract trace context from task headers and create a child span for each task execution. This is how scheduler → queue → worker traces connect.
+
+### Deployment Topology
+
+Both the scheduler and worker run in the same process as the HTTP server, controlled by `enabled_for_env` in the config. This is a deliberate simplification for a monolithic deployment. In a production multi-service setup, these would be extracted into separate binaries consuming the same Asynq queue.
+
+---
+
+## Graceful Shutdown — [`main.go`](../main.go)
+
+The service listens for `SIGTERM` / `SIGINT` and orchestrates shutdown through a chain of `CleanupHandler` implementations:
+
+```go
+var cleanupHandlers []srv.CleanupHandler
+cleanupHandlers = append(cleanupHandlers, database, redis)      // Always present
+if otelProvider != nil   { cleanupHandlers = append(cleanupHandlers, otelProvider) }
+if schedulerAdapter != nil    { cleanupHandlers = append(cleanupHandlers, schedulerAdapter) }
+if schedulerWorkerAdapter != nil { cleanupHandlers = append(cleanupHandlers, schedulerWorkerAdapter) }
+
+apiServer.StartWithGracefulShutdown(ctx, 10*time.Second, cleanupHandlers...)
+```
+
+Each adapter wraps its component's shutdown logic behind the `CleanupHandler` interface (a `Shutdown(ctx context.Context) error` method). The `srv` package handles the HTTP server drain and then calls each cleanup handler.
+
+Only non-nil components are added to the chain — if the scheduler or worker is disabled for the current environment, their cleanup handlers are simply omitted.
 
 ---
 
 ## Testing Strategy
 
-This project is designed with testability in mind, even though a comprehensive test suite is not yet implemented.
+The project uses a two-tier testing strategy: **unit tests** for service logic (table-driven, mockery mocks, `noopTxnFn`, deterministic clock) and **integration tests** for repository queries (Testcontainers with real MongoDB, pre-poisoned decoys, boundary condition checks).
 
-- Domain services depend on repository interfaces, allowing business logic to be tested in isolation using mocks or fakes.
-- Repository implementations are structured to allow integration testing against a real MongoDB instance.
-- HTTP handlers are decoupled from business logic, enabling end-to-end testing using `net/http/httptest`.
+See [TESTING.md](TESTING.md) for the full deep dive — including mutation prevention via input snapshots, vault lock verification, ghost subscription detection, and the maximum collision pattern.
 
-This section documents the **intended testing approach** and serves as guidance for future contributors.
-
-### Unit Testing Services
-
-Services should be tested with mocked repositories:
-
-```go
-func TestCreateSubscription(t *testing.T) {
-    mockRepo := &MockSubscriptionRepository{}
-    mockBillRepo := &MockBillRepository{}
-    
-    service := services.NewSubscriptionService(mockRepo, mockBillRepo)
-    
-    // Test business logic without hitting database
-}
-```
-
-### Repository Testing
-
-Repository tests run against a real MongoDB instance:
-
-```go
-func TestSubscriptionRepository(t *testing.T) {
-    if testing.Short() {
-        t.Skip("skipping integration test")
-    }
-    
-    // Use test container or local MongoDB
-}
-```
-
-### End-to-End Testing
-
-For full request flows:
-
-1. Start the server with test configuration
-2. Make HTTP requests using `net/http/httptest`
-3. Verify database state after operations
-
----
-
-## Graceful Shutdown
-
-All components participate in graceful shutdown:
-
-```go
-apiServer.StartWithGracefulShutdown(
-    ctx,
-    10*time.Second,    // Shutdown timeout
-    database,          // Closeable
-    redis,             // Closeable
-    schedulerAdapter,  // Closeable
-    workerAdapter,     // Closeable
-)
-```
-
-Shutdown order:
-
-1. Stop accepting new HTTP connections
-2. Wait for in-flight requests (up to timeout)
-3. Stop scheduler polling loop
-4. Wait for worker to finish current tasks
-5. Close Redis and MongoDB connections

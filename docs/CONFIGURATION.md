@@ -1,112 +1,182 @@
 # Configuration
 
-Configuration is validated on startup and the service fails fast on missing required values or invalid values.
+All configuration is loaded from `config.yaml` in the project root (see [`example.yaml`](../example.yaml) for the full reference). Environment variables with the `APP_` prefix can override any config value.
 
-Configuration is loaded from `config.yaml` in the project root. Environment variables with `APP_` prefix override file settings.
+---
 
-## Example Configuration
-
-```yaml
-server:
-  port: 8080
-tls:
-  enabled: false
-  cert_path: ""
-  key_path: ""
-
-database:
-  url: "mongodb://localhost:27017"
-  name: "subscription_management"
-
-jwt:
-  access_secret: "your-access-secret-key-here"
-  refresh_secret: "your-refresh-secret-key-here"
-  access_timeout: 1      # hours
-  refresh_timeout: 168   # hours (7 days)
-  issuer: "subscription-management"
-
-redis:
-  url: "localhost:6379"
-  password: ""
-  db: 0
-
-rate_limiter:
-  app:
-    rate: 1
-    burst: 5
-    period: "2s"
-
-scheduler:
-  interval: "12h"
-  reminder_days: [1, 3, 7]
-
-queue_worker:
-  name: "subscription-worker"
-  concurrency: 2
-  queue_name: "subscription"
-
-email:
-  smtp_host: "smtp.gmail.com"
-  smtp_port: 587
-  from_email: "no-reply@example.com"
-  from_name: "Subscription Management"
-  smtp_username: "your-email@gmail.com"
-  smtp_password: "your-app-password"
-  account_url: "https://example.com/account"
-  support_url: "https://example.com/support"
-
-env: "development"
-```
-
-## Environment Variables
-
-Override any setting with `APP_` prefix:
+## Quick Start
 
 ```bash
-APP_DATABASE_URL="mongodb://..."
-APP_JWT_ACCESS_SECRET="..."
-APP_REDIS_URL="redis:6379"
+cp example.yaml config.yaml
+# Edit config.yaml with your actual values
 ```
 
-## Required Fields
+The service will fail fast on startup if required fields are missing — see [Validation Rules](#validation-rules) below.
 
-The service will not start without these:
+---
 
-- `database.url`, `database.name`
-- `jwt.access_secret`, `jwt.refresh_secret`, `jwt.issuer`
-- `redis.url`
-- `rate_limiter.app.rate`
-- `email.smtp_host`, `from_email`, `smtp_username`, `smtp_password`
+## Environment Variable Overrides
 
-## Notes
+[Viper](https://github.com/spf13/viper) loads config in this priority order (highest wins):
 
-- **JWT secrets**: Use different values for access and refresh tokens
-- **Gmail SMTP**: Requires an App Password, not your regular password
-- **Rate limiter**: `rate: 1, burst: 5, period: "2s"` = 1 req/2s average, bursts up to 5
-- **Scheduler and Worker**: The scheduler enqueues tasks to the Redis queue (`subscriptions` by default) which are then processed by the queue worker.
-- **Scheduler interval**: How often to check for renewals/reminders (Go duration format: `"12h"`, `"30m"`)
+1. Environment variables (prefixed with `APP_`)
+2. `config.yaml` file
+3. Built-in defaults
 
-## Observability & Health Checks
+Environment variable naming follows Viper's convention — uppercase, underscored, with `APP_` prefix:
 
-The service exposes endpoints for infrastructure monitoring and orchestrator health checks:
+```bash
+# Override database host
+export APP_DATABASE_HOST=my-mongo-host
 
-- `GET /metrics`: Prometheus metrics (available unconditionally).
-- `GET /healthz`: Basic liveness probe (validates the process is running).
-- `GET /readyz`: Readiness probe (validates connections to MongoDB and Redis).
+# Override server port
+export APP_SERVER_PORT=9090
 
-**Kubernetes Orchestration Example:**
+# Enable OpenTelemetry
+export APP_OTEL_ENABLED=true
+```
+
+---
+
+## Configuration Sections
+
+### Server
+
+| Key | Default | Description |
+|---|---|---|
+| `server.port` | `8080` | HTTP listen port |
+| `server.request_timeout` | `10s` | Per-request context deadline |
+| `server.tls.enabled` | `false` | Enable HTTPS |
+| `server.tls.cert_path` | — | Path to TLS certificate (required if TLS enabled) |
+| `server.tls.key_path` | — | Path to TLS private key (required if TLS enabled) |
+
+### Database (MongoDB)
+
+| Key | Default | Description |
+|---|---|---|
+| `database.host` | **required** | MongoDB hostname |
+| `database.port` | `27017` | MongoDB port |
+| `database.username` | **required** | MongoDB username |
+| `database.password` | **required** | MongoDB password |
+| `database.name` | **required** | Database name |
+| `database.auth_source` | `admin` | Authentication database |
+
+> MongoDB must run as a **replica set** for transaction support.
+
+### Redis
+
+| Key | Default | Description |
+|---|---|---|
+| `redis.host` | **required** | Redis hostname |
+| `redis.port` | `6379` | Redis port |
+| `redis.password` | — | Redis password (empty for no auth) |
+| `redis.db` | `0` | Redis database number |
+
+### JWT
+
+| Key | Default | Description |
+|---|---|---|
+| `jwt.access_secret` | **required** | Secret for signing access tokens |
+| `jwt.refresh_secret` | **required** | Secret for signing refresh tokens |
+| `jwt.access_timeout` | `1` | Access token expiry in hours |
+| `jwt.refresh_timeout` | `72` | Refresh token expiry in hours |
+| `jwt.issuer` | **required** | Token issuer claim |
+
+### Rate Limiter
+
+| Key | Default | Description |
+|---|---|---|
+| `rate_limiter.app.rate` | **required** | Maximum requests per period |
+| `rate_limiter.app.burst` | — | Maximum burst capacity |
+| `rate_limiter.app.period` | `1m` | Time window for rate limiting |
+
+### Scheduler
+
+| Key | Default | Description |
+|---|---|---|
+| `scheduler.name` | **required** | Scheduler instance name (used in logs) |
+| `scheduler.interval` | `12h` | Polling interval for subscription checks |
+| `scheduler.reminder_days` | `[1, 3, 7]` | Days before renewal to send reminders |
+| `scheduler.startup_delay` | `15m` | Delay before the first poll on startup |
+| `scheduler.enabled_for_env` | `[production, staging]` | Environments where the scheduler runs |
+
+### Queue Worker
+
+| Key | Default | Description |
+|---|---|---|
+| `queue_worker.name` | — | Worker instance name (used in logs) |
+| `queue_worker.concurrency` | `2` | Number of concurrent task processors |
+| `queue_worker.enabled_for_env` | `[production, staging]` | Environments where the worker runs |
+
+> To enable the scheduler or worker in development, add `"development"` to the `enabled_for_env` list.
+
+### Asynq
+
+| Key | Default | Description |
+|---|---|---|
+| `asynq.queue_name` | `subscription` | Name of the Redis-backed task queue |
+
+### Email (SMTP)
+
+| Key | Default | Description |
+|---|---|---|
+| `email.smtp_host` | **required** | SMTP server hostname |
+| `email.smtp_port` | `587` | SMTP server port |
+| `email.from_email` | **required** | Sender email address |
+| `email.from_name` | `Subscription Management` | Display name in From header |
+| `email.smtp_username` | **required** | SMTP authentication username |
+| `email.smtp_password` | **required** | SMTP authentication password |
+| `email.account_url` | — | Account management URL (used in email templates) |
+| `email.support_url` | — | Support URL (used in email templates) |
+
+### OpenTelemetry
+
+| Key | Default | Description |
+|---|---|---|
+| `otel.enabled` | `false` | Enable/disable tracing and metrics |
+| `otel.service_name` | `subscription-management` | Service name in traces and metrics |
+| `otel.jaeger_endpoint` | `localhost:4317` | OTLP gRPC endpoint for Jaeger |
+
+When `otel.enabled` is `false`, no traces are exported and a no-op metrics adapter is used. The `/metrics` Prometheus endpoint remains available regardless.
+
+Metric names are also configurable:
+
 ```yaml
-livenessProbe:
-  httpGet:
-    path: /healthz
-    port: 8080
-  initialDelaySeconds: 5
-  periodSeconds: 10
-
-readinessProbe:
-  httpGet:
-    path: /readyz
-    port: 8080
-  initialDelaySeconds: 5
-  periodSeconds: 10
+otel:
+  metrics:
+    subscriptions_created_count:
+      name: "subscriptions_created_total"
+      description: "Total number of successfully created subscriptions"
+    subscriptions_canceled_count:
+      name: "subscriptions_canceled_total"
+      description: "Total number of canceled subscriptions"
+    active_subscriptions_count:
+      name: "active_subscriptions_total"
+      description: "Current number of active subscriptions"
 ```
+
+### Environment
+
+| Key | Default | Description |
+|---|---|---|
+| `env` | — | Environment identifier (`development`, `staging`, `production`) |
+
+This value controls which optional components are started (scheduler, worker) via the `enabled_for_env` lists.
+
+---
+
+## Validation Rules
+
+The service validates all config on startup and exits with a descriptive error listing all missing fields. The full validation logic is in [`config.Validate()`](../internal/config/configure.go).
+
+**Required fields** (service will not start without these):
+- Database: `host`, `username`, `password`, `name`, `auth_source`
+- Redis: `host`
+- JWT: `access_secret`, `refresh_secret`, `issuer`
+- Rate limiter: `app.rate`
+- Scheduler: `name`, `interval`, `reminder_days`, `startup_delay`
+- Queue worker: `concurrency`
+- Email: `smtp_host`, `from_email`, `smtp_username`, `smtp_password`
+- OTel: `service_name`, `jaeger_endpoint`
+
+**Port validation**: `database.port` and `redis.port` must be between 1 and 65535.

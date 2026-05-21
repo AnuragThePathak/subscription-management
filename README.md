@@ -1,304 +1,184 @@
 # Subscription Management Service
 
-A backend service written in Go for managing recurring subscriptions—handling creation, billing cycles, automated renewals, cancellations, and user notifications.
+A production-grade Go backend for managing recurring subscriptions — with automated billing, renewal scheduling, and email notifications. Built to demonstrate clean architecture, distributed tracing, and resilient infrastructure patterns in a real-world context.
 
-## What This System Does
+## Architecture at a Glance
 
-This service manages the complete lifecycle of user subscriptions: from initial creation through recurring billing cycles to eventual expiration or cancellation. It supports monthly and yearly billing frequencies, handles automatic renewals, processes cancellations with proper validity period handling, and sends email notifications for key lifecycle events.
+```mermaid
+graph LR
+    Client([Client])
 
-The system is designed as a learning reference for production-grade backend architecture, emphasizing:
+    subgraph API["API Layer"]
+        MW["Middleware Pipeline<br/><small>OTel · Recoverer · Logger<br/>Timeout · Rate Limiter</small>"]
+        Controllers
+    end
 
-- Clean separation between API layer, domain logic, and infrastructure
-- Domain-driven design principles applied pragmatically
-- Background processing patterns for time-sensitive operations
-- Graceful degradation and proper lifecycle management
+    subgraph Domain["Domain Layer"]
+        Services
+        Models
+        RepoInterfaces["Repository<br/>Interfaces"]
+    end
 
----
+    subgraph Infra["Infrastructure"]
+        MongoDB[(MongoDB)]
+        Redis[(Redis)]
+        Asynq["Asynq<br/><small>Task Queue</small>"]
+    end
 
-## Design Philosophy
+    subgraph Background["Background Processing"]
+        Scheduler
+        Worker["Queue Worker"]
+    end
 
-### Loosely Coupled Monolith
+    subgraph Observability
+        Jaeger["Jaeger<br/><small>Traces</small>"]
+        Prometheus["Prometheus<br/><small>Metrics</small>"]
+        Loki["Loki<br/><small>Logs</small>"]
+        Grafana["Grafana<br/><small>Dashboards</small>"]
+    end
 
-This system is architected as a **loosely coupled monolith**—a single deployable unit with clear internal boundaries. This choice reflects a deliberate tradeoff:
+    Client --> MW --> Controllers --> Services
+    Services --> RepoInterfaces --> MongoDB
+    Services --> RepoInterfaces
+    MW -. "rate limit check" .-> Redis
+    Scheduler -- "enqueue tasks" --> Asynq --> Redis
+    Worker -- "dequeue tasks" --> Asynq
+    Worker --> Services
 
-- **Single process simplicity**: One deployment artifact, shared database connections, straightforward debugging
-- **Module isolation**: The API server and background scheduler are separate concerns that could be extracted into separate services later if scaling demands it
-- **Reduced operational overhead**: No service mesh, no inter-service communication, no distributed tracing complexity
-
-The scheduler and API server share domain logic but have distinct responsibilities. They run as goroutines within the same process but interact only through well-defined service interfaces—making future extraction straightforward.
-
-### Domain-Driven Boundaries
-
-The codebase is organized around **bounded contexts** rather than technical layers:
-
-```
-internal/
-├── api/           → HTTP transport layer (controllers, middleware, request handling)
-├── domain/        → Business logic (models, services, repository interfaces)
-├── adapters/      → Infrastructure wiring (database, Redis, server lifecycle)
-├── scheduler/     → Background job orchestration (polling, task queue)
-├── notifications/ → External integrations (email delivery)
-└── lib/           → Shared utilities (time helpers, authentication)
-```
-
-**Why this separation matters:**
-
-- `domain/` contains the core business logic, expressed through services that depend only on interfaces. While repository implementations are backed by MongoDB, the business logic itself remains isolated from persistence details and can be tested independently.
-- `api/` knows how to handle HTTP but delegates all business decisions to domain services
-- `adapters/` handles the messy reality of external systems (connection pooling, graceful shutdown)
-- `scheduler/` is treated as a separate subsystem with its own entry points
-
-### Repository Pattern
-
-Domain services depend on **repository interfaces**, not concrete implementations. This:
-
-- Enables testing with in-memory fakes
-- Decouples business logic from MongoDB specifics
-- Makes database migration feasible without rewriting service logic
-
-> For implementation details, see [ARCHITECTURE.md → Repository Pattern](docs/ARCHITECTURE.md#repository-pattern)
-
----
-
-## Subscription Lifecycle
-
-A subscription moves through well-defined states with clear transition rules:
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                                                                  │
-│   ┌─────────┐      auto-renew      ┌─────────┐                   │
-│   │         │ ◄─────────────────── │         │                   │
-│   │ ACTIVE  │                      │ ACTIVE  │ (next period)     │
-│   │         │ ────────────────────►│         │                   │
-│   └────┬────┘     renewal date     └─────────┘                   │
-│        │                                                         │
-│        │ user cancels                                            │
-│        ▼                                                         │
-│   ┌────────────┐     validity ends     ┌─────────┐               │
-│   │ CANCELED   │ ─────────────────────►│ EXPIRED │               │
-│   └────────────┘                       └─────────┘               │
-│                                                                  │
-└──────────────────────────────────────────────────────────────────┘
+    MW -. traces .-> Jaeger
+    Services -. metrics .-> Prometheus
+    Prometheus --> Grafana
+    Loki --> Grafana
+    Jaeger --> Grafana
 ```
 
-**Key behaviors:**
+> Domain services depend on **interfaces**, not implementations. MongoDB, Redis, and OTel are wired at the boundary — the business logic is infrastructure-agnostic.
 
-| Action | Behavior |
-|--------|----------|
-| **Create** | Subscription starts `active`, validity set based on billing frequency |
-| **Auto-renew** | Scheduler renews active subscriptions before billing period ends, creates billing record, sends confirmation email |
-| **Cancel** | Marks subscription `canceled` but remains valid until current period ends—no prorated refund mid-cycle |
-| **Expire** | Canceled subscriptions transition to `expired` once validity ends |
-| **Delete** | Hard delete is permitted only for `expired` subscriptions |
+## Key Engineering Decisions
 
-**Cancellation nuances:**
+| Pattern | What & Why |
+|---|---|
+| **Clean Architecture** | Strict layering — [domain models](internal/domain/models/) own validation, [services](internal/domain/services/) own business rules, [repositories](internal/domain/repositories/) define interfaces the infra implements. Domain never imports API or adapter packages. |
+| **Fail-Open Rate Limiter** | Redis-backed per-IP rate limiting via [middleware](internal/api/middlewares/rate_limiter.go). If Redis dies, traffic **keeps flowing** — errors are recorded in the OTel span and log-throttled with `atomic.CompareAndSwap` to avoid log floods. |
+| **Spoofing-Resistant IP Extraction** | [`ClientIP`](internal/lib/net.go) traverses `X-Forwarded-For` right-to-left to find the first public IP, ignoring headers entirely if `RemoteAddr` is already public. Uses `netip.ParseAddr` for validation with zero-allocation parsing. |
+| **OTel Distributed Tracing** | End-to-end request traces from HTTP → Redis → MongoDB → transaction commit — all without polluting domain logic. Instrumentation lives at the [middleware](internal/api/middlewares/otel.go) and adapter boundaries. Trace context propagates across the Asynq queue via [W3C header injection](internal/observability/asynq.go). |
+| **Transactional Billing** | Subscription creation and renewal atomically insert a bill + update the subscription inside a [MongoDB transaction](internal/domain/repositories/txn.go). The `TxnFn` type lets services run transactions without importing `mongo`. |
+| **Clock Injection** | All services accept a [`clock.NowFn`](internal/core/clock/clock.go) — `time.Now` in production, a fixed timestamp in tests. Zero-cost testability without mocking the clock globally. |
+| **Interface Segregation** | Service interfaces are split into [`External`](internal/domain/services/subscription.go#L17-L24) (API-facing) and [`Internal`](internal/domain/services/subscription.go#L26-L34) (scheduler/worker-facing). Each consumer depends only on the methods it needs. |
+| **Structured Error System** | A typed [`AppError`](internal/api/shared/apperror/) system with error codes that map directly to HTTP status codes. Errors carry optional log attributes for contextual debugging without leaking internals to the client. |
+| **Generic MongoDB Helpers** | Type-safe CRUD wrappers ([`FindOne[T]`](internal/lib/mongo.go), `FindMany[T]`, etc.) with unified error classification — duplicate key → Conflict, deadline exceeded → Timeout, no documents → NotFound. Written once, used by every repository. |
+| **Background Task Pipeline** | A [scheduler](internal/scheduler/scheduler.go) polls for due subscriptions and enqueues tasks via Asynq into Redis. A [queue worker](internal/scheduler/worker.go) processes reminders, auto-renewals, and expirations — with deduplication, retries, and OTel trace propagation across the queue boundary. |
+| **Graceful Shutdown** | Signal-driven shutdown coordinates HTTP drain, OTel flush, scheduler stop, worker stop, and database disconnect through a [composable `CleanupHandler` chain](internal/adapters/). |
 
-- A canceled subscription with remaining validity continues to work until `ValidTill`
-- Refunds are only processed if the current billing period hasn't started yet
-- The scheduler automatically marks canceled subscriptions as expired after their valid period ends
+## Observability
 
-> For the full state machine diagram, see [ARCHITECTURE.md → Domain Model](docs/ARCHITECTURE.md#domain-model)
+A single `POST /api/v1/subscriptions` request produces the trace below — showing the Redis rate-limit check (`evalsha`), MongoDB bill and subscription inserts, and the transaction commit, all correlated under one trace ID:
 
----
+<p align="center">
+  <img src="docs/assets/trace.png" alt="Jaeger trace showing a POST /api/v1/subscriptions request with Redis rate-limiting (evalsha, 4.53ms), MongoDB inserts (bills.insert 1.84ms, subscriptions.insert 989µs), and commitTransaction (4.17ms) — total 12.87ms" width="900" />
+</p>
 
-## Background Processing
+The full observability stack — Jaeger, Prometheus, Loki, and Grafana — runs via a single Docker Compose file. See [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) for the deep dive on tracing, metrics, and structured logging.
 
-### Scheduler + Worker Architecture
-
-Time-sensitive operations (renewals, reminders, expirations) are handled by a background subsystem with two components:
-
-```
-┌────────────────────┐          ┌────────────────────────┐
-│                    │  tasks   │                        │
-│    Scheduler       │ ───────► │    Redis Task Queue    │
-│   (polls DB on     │          │    (asynq)             │
-│    configurable    │          │                        │
-│    interval)       │          └───────────┬────────────┘
-│                    │                      │
-└────────────────────┘                      │ task payloads
-                                            ▼
-                              ┌──────────────────────────┐
-                              │                          │
-                              │    Worker Pool           │
-                              │   (concurrent handlers)  │
-                              │                          │
-                              │  • Send reminder emails  │
-                              │  • Process renewals      │
-                              │  • Mark expirations      │
-                              │                          │
-                              └──────────────────────────┘
-```
-
-**Scheduler responsibilities:**
-
-- Runs on a configurable interval (default: every 12 hours)
-- Queries for subscriptions approaching renewal, needing reminders, or requiring expiration
-- Enqueues tasks with idempotency keys to prevent duplicate processing
-
-**Worker responsibilities:**
-
-- Consumes tasks from Redis queue
-- Handles reminder notifications (configurable days before renewal: e.g., 7, 3, 1)
-- Executes automatic renewals (creates billing records, extends validity, sends confirmation)
-- Marks canceled subscriptions as expired when validity ends
-
-**Why this design:**
-
-- Decouples "what needs to be done" (scheduler) from "how to do it" (worker)
-- Redis queue provides persistence and retry semantics via [asynq](https://github.com/hibiken/asynq)
-- Multiple workers can process concurrently without coordination
-- Scheduler and worker failures don't affect API availability
-
-> For task types, deduplication, and retry semantics, see [ARCHITECTURE.md → Scheduler Internals](docs/ARCHITECTURE.md#scheduler-internals)
-
----
-
-## Project Structure
-
-```
-subscription-management/
-├── main.go                 # Application entry point, dependency wiring
-└── internal/
-    ├── adapters/           # Infrastructure adapters and lifecycle
-    │   ├── database.go     # MongoDB connection wrapper
-    │   ├── redis.go        # Redis client with health checks
-    │   ├── server.go       # HTTP server lifecycle
-    │   ├── scheduler.go    # Scheduler shutdown interface
-    │   └── worker.go       # Worker shutdown interface
-    │
-    ├── api/                # HTTP transport layer
-    │   ├── controllers/    # Route handlers (auth, users, subscriptions)
-    │   ├── middlewares/    # Auth, rate limiting
-    │   └── shared/         # Cross-cutting API concerns
-    │       ├── apperror/   # Typed application errors
-    │       ├── config/     # Configuration loading
-    │       └── endpoint/   # Request/response helpers
-    │
-    ├── domain/             # Core business logic
-    │   ├── models/         # Domain entities (User, Subscription, Bill)
-    │   ├── repositories/   # Data access interfaces + MongoDB implementations
-    │   └── services/       # Business operations
-    │
-    ├── scheduler/          # Background processing
-    │   ├── scheduler.go    # Polling loop, task enqueueing
-    │   └── worker.go       # Task handlers (reminders, renewals, expirations)
-    │
-    ├── notifications/      # External integrations
-    │   ├── email_sender.go # SMTP email delivery
-    │   └── email_template.go # Email templates
-    │
-    └── lib/                # Shared utilities
-        ├── auth.go         # Authentication helpers
-        ├── mongo.go        # MongoDB utilities
-        └── time.go         # Time calculation helpers
-```
-
----
-
-## Setup
+## Quick Start
 
 ### Prerequisites
 
-- Go 1.24+
-- MongoDB
-- Redis
+- **Go 1.26+**
+- **MongoDB** (replica set required for transactions)
+- **Redis**
 
-### Quick Start
+### Run
 
 ```bash
+# Clone
 git clone https://github.com/AnuragThePathak/subscription-management.git
 cd subscription-management
-go mod download
+
+# Configure
+cp example.yaml config.yaml
+# Edit config.yaml with your MongoDB/Redis connection details
+
+# Start the observability stack (optional)
+docker compose -f docker-compose.observability.yml up -d
+
+# Run the service
+go run .
 ```
 
-Create `config.yaml` (see [Configuration](#configuration)) and run:
-
-```bash
-go run main.go
-```
-
----
-
-## Configuration
-
-The service loads configuration from `config.yaml` or environment variables. Key sections:
-
-| Section | Purpose |
-|---------|---------|
-| `server` | HTTP port, TLS settings |
-| `database` | MongoDB connection URI and database name |
-| `jwt` | Token signing secrets and expiration times |
-| `rate_limiter` | API rate limiting with Redis backend |
-| `scheduler` | Polling interval and reminder schedule |
-| `queue_worker` | Worker concurrency |
-| `email` | SMTP configuration for notifications |
-
-See [CONFIGURATION.md](docs/CONFIGURATION.md) for detailed options and environment variable mappings.
-
----
+> [!NOTE]
+> MongoDB must be running as a **replica set** for transaction support. The scheduler and queue worker are disabled by default in development — see `enabled_for_env` in [config](docs/CONFIGURATION.md).
 
 ## API Overview
 
-The API follows RESTful conventions with JWT-based authentication.
+The API uses JWT authentication (access + refresh tokens). All subscription and user endpoints require a valid access token.
 
-> For JWT claims structure and token refresh flow, see [ARCHITECTURE.md → Authentication Flow](docs/ARCHITECTURE.md#authentication-flow)
+| Group | Endpoints | Description |
+|---|---|---|
+| **Auth** | `POST /register`, `/login`, `/refresh` | User registration, login, token refresh |
+| **Users** | `GET /users/:id`, `DELETE /users/:id` | Profile management (owner-only) |
+| **Subscriptions** | `POST`, `GET`, `PUT /:id/cancel`, `DELETE /:id` | Full lifecycle management with auto-billing |
+| **Health** | `GET /healthz`, `GET /readyz` | Liveness and readiness probes (checks MongoDB + Redis) |
+| **Metrics** | `GET /metrics` | Prometheus scrape endpoint |
 
-### Authentication
+> **Runnable API examples** — see the [`.http` files](internal/api/http/) for ready-to-use requests in VS Code / IntelliJ HTTP client.
 
-```
-POST /api/v1/auth/register    # Create account
-POST /api/v1/auth/login       # Get tokens
-POST /api/v1/auth/refresh     # Refresh access token
-```
+## Testing
 
-### Users (authenticated)
+The project uses a **two-tier testing strategy** that separates fast unit tests from infrastructure-dependent integration tests.
 
-```
-GET    /api/v1/users/:id      # Get user
-PUT    /api/v1/users/:id      # Update user
-DELETE /api/v1/users/:id      # Delete user
-```
+### Unit Tests
 
-### Subscriptions (authenticated)
+Table-driven tests with [mockery](https://github.com/vektra/mockery)-generated mocks. Services are tested with a `noopTxnFn` that executes transaction callbacks synchronously — no database needed.
 
-```
-GET    /api/v1/subscriptions           # List all subscriptions
-POST   /api/v1/subscriptions           # Create subscription
-GET    /api/v1/subscriptions/:id       # Get subscription
-GET    /api/v1/subscriptions/user/:id  # Get user's subscriptions
-PUT    /api/v1/subscriptions/:id/cancel # Cancel subscription
-DELETE /api/v1/subscriptions/:id       # Delete subscription (expired only)
+```bash
+make test          # Unit tests + coverage summary
 ```
 
----
+### Integration Tests
 
-## Documentation Structure
+Repository tests run against a **real MongoDB instance** spun up via [Testcontainers](https://testcontainers.com/). Each test gets an isolated database name, so tests share a single container without data interference.
 
-This project uses multiple documentation files to keep concerns separated:
+```bash
+make integration   # Integration tests only (requires Docker)
+make test-all      # Unit + integration with race detector
+```
 
-| File | Purpose |
-|------|---------|
-| [README.md](README.md) | High-level overview, architecture, quick start |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Technical reference for internals—start with [Quick Reference](docs/ARCHITECTURE.md#quick-reference) and [Design Tradeoffs](docs/ARCHITECTURE.md#design-tradeoffs) |
-| [CONFIGURATION.md](docs/CONFIGURATION.md) | Configuration reference, environment variables |
-| [CONTRIBUTING.md](docs/CONTRIBUTING.md) | Development setup, code style, PR process |
+### Coverage
 
-### ARCHITECTURE.md Quick Links
+```bash
+make coverage      # Open HTML coverage report (run test or test-all first)
+```
 
-| Section | What You'll Find |
-|---------|------------------|
-| [Quick Reference](docs/ARCHITECTURE.md#quick-reference) | Lookup tables for status values, error codes, file locations |
-| [Request Flow](docs/ARCHITECTURE.md#request-flow) | How HTTP requests traverse the system |
-| [Repository Pattern](docs/ARCHITECTURE.md#repository-pattern) | Interface design and MongoDB implementation |
-| [Error Handling](docs/ARCHITECTURE.md#error-handling-strategy) | AppError structure and error propagation |
-| [Authentication Flow](docs/ARCHITECTURE.md#authentication-flow) | JWT tokens, middleware, refresh flow |
-| [Scheduler Internals](docs/ARCHITECTURE.md#scheduler-internals) | Polling, task types, deduplication, retries |
-| [Design Tradeoffs](docs/ARCHITECTURE.md#design-tradeoffs) | Why MongoDB, asynq, chi |
-| [Testing Strategy](docs/ARCHITECTURE.md#testing-strategy) | Unit, integration, E2E approaches |
+## Development
 
----
+### Makefile Targets
+
+| Target | Description |
+|---|---|
+| `make test` | Unit tests with coverage |
+| `make integration` | Integration tests (requires Docker) |
+| `make test-all` | All tests with race detector |
+| `make coverage` | Open coverage HTML report |
+| `make mocks` | Regenerate mockery mocks |
+| `make vet` | Run `go vet` |
+| `make lint` | Run `golangci-lint` |
+| `make check` | Full pre-commit: vet + lint + all tests |
+| `make build` | Build binary to `bin/app` |
+
+### Configuration
+
+Configuration is loaded from `config.yaml` (see [`example.yaml`](example.yaml)) with environment variable overrides via the `APP_` prefix. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for details.
+
+### Further Reading
+
+| Document | Content |
+|---|---|
+| [Architecture](docs/ARCHITECTURE.md) | Layer design, service composition, background processing, graceful shutdown |
+| [Testing](docs/TESTING.md) | Testing philosophy, pre-poisoning, vault lock verification, mutation prevention |
+| [Observability](docs/OBSERVABILITY.md) | Distributed tracing, metrics, structured logging, running the stack |
+| [Configuration](docs/CONFIGURATION.md) | All config options, env var overrides, validation rules |
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+[MIT](LICENSE)

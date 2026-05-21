@@ -103,7 +103,7 @@ func TestRateLimiter(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			svc := mocks.NewMockRateLimiterService(t)
 
-			ip := strings.Split(tt.remoteAddr, ":")[0]
+			ip, _, _ := strings.Cut(tt.remoteAddr, ":")
 			tt.setupMocks(svc, ip, tt.isAllowed, tt.remaining, tt.retryAfter)
 
 			// Setup Dummy Handler

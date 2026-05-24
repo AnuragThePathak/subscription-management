@@ -9,60 +9,62 @@ For the observability story (tracing, metrics, logging), see [OBSERVABILITY.md](
 ## Layer Overview
 
 ```mermaid
-graph TB
+graph TD
+    Client([Client])
+
     subgraph API["API Layer — internal/api/"]
-        direction TB
-        MW["Middleware Pipeline"]
+        MW["Middleware Pipeline<br/><small>OTel · Timeout · Rate Limiter · Auth</small>"]
         Controllers
-        Endpoint["endpoint.RequestHandler"]
+        ReqHandler["endpoint.RequestHandler"]
         AppError["apperror.AppError"]
     end
 
     subgraph Domain["Domain Layer — internal/domain/"]
-        direction TB
         Models
-        ServiceInterfaces["Service Interfaces"]
+        ServiceInterfaces["Service Interfaces<br/><small>External + Internal</small>"]
         ServiceImpls["Service Implementations"]
         RepoInterfaces["Repository Interfaces"]
-        TxnFn["TxnFn"]
-    end
-
-    subgraph Background["Background — internal/scheduler/"]
-        direction TB
-        Scheduler
-        QueueWorker["Queue Worker"]
+        TxnFn
     end
 
     subgraph Core["Core — internal/core/"]
         Clock["clock.NowFn"]
         AppCtx["appctx"]
-        LogAttr["logattr"]
-        OtelAttr["otelattr"]
     end
 
-    subgraph Infrastructure["Infrastructure"]
-        direction TB
+    subgraph Background["Background — internal/scheduler/"]
+        Scheduler
+        Worker["Queue Worker"]
+    end
+
+    subgraph Infra["Infrastructure"]
         Adapters["internal/adapters/"]
-        MongoRepos["Repository Impls<br/><small>internal/domain/repositories/</small>"]
-        OTelPkg["internal/observability/"]
-        Config["internal/config/"]
+        RepoImpls["Repository Impls<br/><small>internal/domain/repositories/</small>"]
         Notifications["internal/notifications/"]
         Lib["internal/lib/"]
     end
 
+    MongoDB[(MongoDB)]
+    Redis[(Redis)]
+    Asynq["Asynq Queue"]
+
+    Client --> MW --> Controllers
+    Controllers --> ReqHandler
     Controllers --> ServiceInterfaces
     ServiceImpls --> RepoInterfaces
     ServiceImpls --> TxnFn
     ServiceImpls --> Clock
 
     Scheduler --> ServiceInterfaces
-    QueueWorker --> ServiceInterfaces
-    QueueWorker --> Notifications
+    Scheduler -- enqueue --> Asynq --> Redis
+    Worker -- dequeue --> Asynq
+    Worker --> ServiceInterfaces
+    Worker --> Notifications
 
-    MongoRepos -.->|implements| RepoInterfaces
-    Adapters --> MongoDB[(MongoDB)]
-    Adapters --> Redis[(Redis)]
-    MongoRepos --> Lib
+    RepoImpls -.->|implements| RepoInterfaces
+    RepoImpls --> Lib
+    Adapters --> MongoDB
+    Adapters --> Redis
 ```
 
 **Dependency rule**: imports flow inward. Domain packages never import API or infrastructure packages. The API layer depends on domain interfaces, not concrete implementations.
